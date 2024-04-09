@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sys
 import warnings
@@ -34,10 +35,7 @@ class iP(Service):
 
     \b
     Tips:
-        - Use title URL or id as input:
-            https://www.bbc.co.uk/iplayer/episodes/b007r3n8 OR b007r3n8
-        - Downloading by episode URL is currently not supported
-
+        - Use full title URL as input for best results.
     \b
         - An SSL certificate (PEM) is required for accessing the UHD endpoint.
         Specify its path using the service configuration data in the root config:
@@ -51,7 +49,7 @@ class iP(Service):
 
     ALIASES = ("bbciplayer", "bbc", "iplayer")
     GEOFENCE = ("gb",)
-    TITLE_RE = r"^(?:https?://(?:www\.)?bbc\.co\.uk/iplayer/episodes?/)?(?P<id>[a-z0-9]+)"
+    TITLE_RE = r"^(?:https?://(?:www\.)?bbc\.co\.uk/(?:iplayer/(?P<kind>episode|episodes)/|programmes/))?(?P<id>[a-z0-9]+)(?:/.*)?$"
 
     @staticmethod
     @click.command(name="iP", short_help="https://www.bbc.co.uk/iplayer", help=__doc__)
@@ -94,14 +92,16 @@ class iP(Service):
             )
 
     def get_titles(self) -> Union[Movies, Series]:
-        pid = re.match(self.TITLE_RE, self.title).group("id")
+        kind, pid = (re.match(self.TITLE_RE, self.title).group(i) for i in ("kind", "id"))
         if not pid:
-            self.log.error("Invalid input - is the URL or id correct?")
+            self.log.error("Unable to parse title ID - is the URL or id correct?")
             sys.exit(1)
 
         data = self.get_data(pid, slice_id=None)
-        if data is None:
-            self.log.error("Metadata was not found - is the URL or id correct?")
+        if data is None and kind == "episode":
+            return self.get_single_episode(self.title)
+        elif data is None:
+            self.log.error("Metadata was not found - if %s is an episode, use full URL as input", pid)
             sys.exit(1)
 
         if "Film" in data["labels"]["category"]:
@@ -276,6 +276,44 @@ class iP(Service):
             number=ep_num,
             name=ep_name,
             language="en",
+        )
+    
+    def get_single_episode(self, url: str) -> Series:
+        r = self.session.get(url)
+        r.raise_for_status()
+
+        redux = re.search(
+            "window.__IPLAYER_REDUX_STATE__ = (.*?);</script>", r.text
+        ).group(1)
+        data = json.loads(redux)
+        subtitle = data["episode"].get("subtitle")
+
+        if subtitle is not None:
+            season_match = re.search(r"Series (\d+):", subtitle)
+            season = int(season_match.group(1)) if season_match else 0
+            number_match = re.finditer(r"(\d+)\.|Episode (\d+)", subtitle)
+            number = int(next((m.group(1) or m.group(2) for m in number_match), 0))
+            name_match = re.search(r"\d+\. (.+)", subtitle)
+            name = (
+                name_match.group(1)
+                if name_match
+                else subtitle
+                if not re.search(r"Series (\d+): Episode (\d+)", subtitle)
+                else ""
+            )
+
+        return Series(
+            [
+                Episode(
+                    id_=data["episode"]["id"],
+                    service=self.__class__,
+                    title=data["episode"]["title"],
+                    season=season if subtitle else 0,
+                    number=number if subtitle else 0,
+                    name=name if subtitle else "",
+                    language="en",
+                )
+            ]
         )
 
     def find(self, pattern, string, group=None):
