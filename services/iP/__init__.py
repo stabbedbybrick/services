@@ -36,6 +36,7 @@ class iP(Service):
     \b
     Tips:
         - Use full title URL as input for best results.
+        - See which titles are available in UHD: https://www.bbc.co.uk/programmes/p0dh39s7
     \b
         - An SSL certificate (PEM) is required for accessing the UHD endpoint.
         Specify its path using the service configuration data in the root config:
@@ -257,7 +258,7 @@ class iP(Service):
     def create_episode(self, episode):
         title = episode["episode"]["title"]["default"].strip()
         subtitle = episode["episode"]["subtitle"]
-        series = re.finditer(r"Series (\d+):|Season (\d+):|(\d{4}/\d{2}): Episode \d+", subtitle.get("default"))
+        series = re.finditer(r"Series (\d+):|Season (\d+):|(\d{4}/\d{2}): Episode \d+", subtitle.get("default") or "")
         season_num = int(next((m.group(1) or m.group(2) or m.group(3).replace("/", "") for m in series), 0))
 
         number = re.finditer(r"(\d+)\.|Episode (\d+)", subtitle.get("slice") or subtitle.get("default") or "")
