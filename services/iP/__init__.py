@@ -36,7 +36,6 @@ class iP(Service):
     \b
     Tips:
         - Use full title URL as input for best results.
-        - See which titles are available in UHD: https://www.bbc.co.uk/programmes/p0dh39s7
     \b
         - An SSL certificate (PEM) is required for accessing the UHD endpoint.
         Specify its path using the service configuration data in the root config:
@@ -46,6 +45,8 @@ class iP(Service):
                     cert: path/to/cert
     \b
         - Use -v H.265 to request UHD tracks
+        - See which titles are available in UHD: 
+            https://www.bbc.co.uk/iplayer/help/questions/programme-availability/uhd-content
     """
 
     ALIASES = ("bbciplayer", "bbc", "iplayer")
@@ -122,39 +123,28 @@ class iP(Service):
             seasons = [self.get_data(pid, x["id"]) for x in data["slices"] or [{"id": None}]]
             episodes = [self.create_episode(episode) for season in seasons for episode in season["entities"]["results"]]
             return Series(episodes)
-
+        
     def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
-        playlist = self.session.get(url=self.config["endpoints"]["playlist"].format(pid=title.id)).json()
-        if not playlist["defaultAvailableVersion"]:
-            self.log.error(" - Title is unavailable")
-            sys.exit(1)
+        r = self.session.get(url=self.config["endpoints"]["playlist"].format(pid=title.id))
+        r.raise_for_status()
 
-        if self.config.get("cert"):
-            url = self.config["endpoints"]["manifest_"].format(
-                vpid=playlist["defaultAvailableVersion"]["smpConfig"]["items"][0]["vpid"],
-                mediaset="iptv-uhd" if self.vcodec == "H.265" else "iptv-all",
+        quality = [
+            connection.get("height")
+            for i in (
+                self.check_all_versions(version)
+                for version in (x.get("pid") for x in r.json()["allAvailableVersions"])
             )
+            for connection in i
+            if connection.get("height")
+        ]
+        max_quality = max((h for h in quality if h < "1080"), default=None)
 
-            session = self.session
-            session.mount("https://", SSLCiphers())
-            session.mount("http://", SSLCiphers())
-            manifest = session.get(
-                url, headers={"user-agent": self.config["user_agent"]}, cert=self.config["cert"]
-            ).json()
-
-            if "result" in manifest:
-                self.log.error(f" - Failed to get manifest [{manifest['result']}]")
-                sys.exit(1)
-
-        else:
-            url = self.config["endpoints"]["manifest"].format(
-                vpid=playlist["defaultAvailableVersion"]["smpConfig"]["items"][0]["vpid"],
-                mediaset="iptv-all",
-            )
-            manifest = self.session.get(url).json()
-
+        media = next((i for i in (self.check_all_versions(version)
+                    for version in (x.get("pid") for x in r.json()["allAvailableVersions"]))
+                    if any(connection.get("height") == max_quality for connection in i)), None)
+        
         connection = {}
-        for video in [x for x in manifest["media"] if x["kind"] == "video"]:
+        for video in [x for x in media if x["kind"] == "video"]:
             connections = sorted(video["connection"], key=lambda x: x["priority"])
             if self.vcodec == "H.265":
                 connection = connections[0]
@@ -211,7 +201,7 @@ class iP(Service):
                 video.codec = Video.Codec.from_codecs(video.data["hls"]["playlist"].stream_info.codecs)
                 video.bitrate = int(self.find(r"-video=(\d+)", as_list(video.url)[0]) or 0)
 
-        for caption in [x for x in manifest["media"] if x["kind"] == "captions"]:
+        for caption in [x for x in media if x["kind"] == "captions"]:
             connection = sorted(caption["connection"], key=lambda x: x["priority"])[0]
             tracks.add(
                 Subtitle(
@@ -236,7 +226,7 @@ class iP(Service):
 
     def get_widevine_license(self, challenge: bytes, **_: Any) -> str:
         return None
-    
+
     # service specific functions
 
     def get_data(self, pid: str, slice_id: str) -> dict:
@@ -254,6 +244,35 @@ class iP(Service):
         r.raise_for_status()
 
         return r.json()["data"]["programme"]
+    
+    def check_all_versions(self, vpid: str) -> list:
+        if self.config.get("cert"):
+            url = self.config["endpoints"]["manifest_"].format(
+                vpid=vpid,
+                mediaset="iptv-uhd" if self.vcodec == "H.265" else "iptv-all",
+            )
+
+            session = self.session
+            session.mount("https://", SSLCiphers())
+            session.mount("http://", SSLCiphers())
+            manifest = session.get(
+                url, headers={"user-agent": self.config["user_agent"]}, cert=self.config["cert"]
+            ).json()
+
+            if "result" in manifest:
+                return {}
+
+        else:
+            url = self.config["endpoints"]["manifest"].format(
+                vpid=vpid,
+                mediaset="iptv-all",
+            )
+            manifest = self.session.get(url).json()
+
+            if "result" in manifest:
+                return {}
+
+        return manifest["media"]
 
     def create_episode(self, episode):
         title = episode["episode"]["title"]["default"].strip()
@@ -278,14 +297,12 @@ class iP(Service):
             name=ep_name,
             language="en",
         )
-    
+
     def get_single_episode(self, url: str) -> Series:
         r = self.session.get(url)
         r.raise_for_status()
 
-        redux = re.search(
-            "window.__IPLAYER_REDUX_STATE__ = (.*?);</script>", r.text
-        ).group(1)
+        redux = re.search("window.__IPLAYER_REDUX_STATE__ = (.*?);</script>", r.text).group(1)
         data = json.loads(redux)
         subtitle = data["episode"].get("subtitle")
 
