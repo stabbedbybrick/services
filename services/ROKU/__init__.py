@@ -206,7 +206,7 @@ class ROKU(Service):
         chapters = []
         if track.data.get("playbackMedia", {}).get("adBreaks"):
             timestamps = sorted(track.data["playbackMedia"]["adBreaks"])
-            chapters = [Chapter(name=f"Chapter {i + 1:02}", timestamp=ad) for i, ad in enumerate(timestamps)]
+            chapters = [Chapter(name=f"Chapter {i + 1:02}", timestamp=ad.split(".")[0]) for i, ad in enumerate(timestamps)]
 
         if track.data.get("playbackMedia", {}).get("creditCuePoints"):
             chapters.append(
