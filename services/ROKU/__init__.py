@@ -76,9 +76,9 @@ class ROKU(Service):
 
         results = r.json()
         for result in results["view"]:
-            if not result["content"]["type"] == "zone":
+            if result["content"]["type"] not in ["zone", "provider"]:
                 _id = result["content"].get("meta", {}).get("id")
-                _desc = result["content"].get("descriptions")
+                _desc = result["content"].get("descriptions", {})
 
                 label = f'{result["content"].get("type")} ({result["content"].get("releaseYear")})'
                 if result["content"].get("viewOptions"):
