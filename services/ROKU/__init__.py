@@ -209,15 +209,15 @@ class ROKU(Service):
             chapters = [Chapter(name=f"Chapter {i + 1:02}", timestamp=ad.split(".")[0]) for i, ad in enumerate(timestamps)]
 
         if track.data.get("playbackMedia", {}).get("creditCuePoints"):
-            chapters.append(
-                Chapter(
-                    name="Credits",
-                    timestamp=datetime.fromtimestamp(
-                        (track.data["playbackMedia"]["creditCuePoints"][0]["start"] / 1000),
-                        tz=timezone.utc,
-                    ).strftime("%H:%M:%S.%f")[:-3],
+            start = next((
+                x.get("start") for x in track.data["playbackMedia"]["creditCuePoints"] if x.get("start") != 0), None)
+            if start:
+                chapters.append(
+                    Chapter(
+                        name="Credits",
+                        timestamp=datetime.fromtimestamp((start / 1000), tz=timezone.utc).strftime("%H:%M:%S.%f")[:-3],
+                    )
                 )
-            )
 
         return chapters
 
