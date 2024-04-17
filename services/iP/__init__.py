@@ -36,6 +36,7 @@ class iP(Service):
     \b
     Tips:
         - Use full title URL as input for best results.
+        - Use --list-titles before anything, iPlayer's listings are often messed up.
     \b
         - An SSL certificate (PEM) is required for accessing the UHD endpoint.
         Specify its path using the service configuration data in the root config:
@@ -121,7 +122,7 @@ class iP(Service):
             )
         else:
             seasons = [self.get_data(pid, x["id"]) for x in data["slices"] or [{"id": None}]]
-            episodes = [self.create_episode(episode) for season in seasons for episode in season["entities"]["results"]]
+            episodes = [self.create_episode(episode, data) for season in seasons for episode in season["entities"]["results"]]
             return Series(episodes)
         
     def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
@@ -285,11 +286,13 @@ class iP(Service):
 
         return manifest["media"]
 
-    def create_episode(self, episode):
+    def create_episode(self, episode: dict, data: dict) -> Episode:
         title = episode["episode"]["title"]["default"].strip()
         subtitle = episode["episode"]["subtitle"]
         series = re.finditer(r"Series (\d+):|Season (\d+):|(\d{4}/\d{2}): Episode \d+", subtitle.get("default") or "")
         season_num = int(next((m.group(1) or m.group(2) or m.group(3).replace("/", "") for m in series), 0))
+        if season_num == 0 and not data.get("slices"):
+            season_num = 1
 
         number = re.finditer(r"(\d+)\.|Episode (\d+)", subtitle.get("slice") or subtitle.get("default") or "")
         ep_num = int(next((m.group(1) or m.group(2) for m in number), 0))
