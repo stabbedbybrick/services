@@ -126,13 +126,24 @@ class iP(Service):
         
     def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
         r = self.session.get(url=self.config["endpoints"]["playlist"].format(pid=title.id))
-        r.raise_for_status()
+        if not r.ok:
+            self.log.error(r.text)
+            sys.exit(1)
 
+        versions = r.json().get("allAvailableVersions")
+        if not versions:
+            r = self.session.get(self.config["base_url"].format(type="episode", pid=title.id))
+            redux = re.search("window.__IPLAYER_REDUX_STATE__ = (.*?);</script>", r.text).group(1)
+            data = json.loads(redux)
+            versions = [
+                {"pid": x.get("id") for x in data["versions"] if not x.get("kind") == "audio-described"} 
+            ]
+        
         quality = [
             connection.get("height")
             for i in (
                 self.check_all_versions(version)
-                for version in (x.get("pid") for x in r.json()["allAvailableVersions"])
+                for version in (x.get("pid") for x in versions)
             )
             for connection in i
             if connection.get("height")
@@ -140,7 +151,7 @@ class iP(Service):
         max_quality = max((h for h in quality if h < "1080"), default=None)
 
         media = next((i for i in (self.check_all_versions(version)
-                    for version in (x.get("pid") for x in r.json()["allAvailableVersions"]))
+                    for version in (x.get("pid") for x in versions))
                     if any(connection.get("height") == max_quality for connection in i)), None)
         
         connection = {}
@@ -296,6 +307,7 @@ class iP(Service):
             number=ep_num,
             name=ep_name,
             language="en",
+            data=episode,
         )
 
     def get_single_episode(self, url: str) -> Series:

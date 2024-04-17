@@ -1,3 +1,4 @@
+base_url: https://www.bbc.co.uk/iplayer/{type}/{pid}
 user_agent: 'smarttv_AFTMM_Build_0003255372676_Chromium_41.0.2250.2'
 api_key: 'D2FgtcTxGqqIgLsfBWTJdrQh2tVdeaAp'
 
@@ -7,3 +8,4 @@ endpoints:
   manifest: "https://open.live.bbc.co.uk/mediaselector/6/select/version/2.0/mediaset/{mediaset}/vpid/{vpid}/"
   manifest_: 'https://securegate.iplayer.bbc.co.uk/mediaselector/6/select/version/2.0/vpid/{vpid}/format/json/mediaset/{mediaset}/proto/https'
   search: "https://search.api.bbci.co.uk/formula/iplayer-ibl-root"
+
