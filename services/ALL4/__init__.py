@@ -302,7 +302,9 @@ class ALL4(Service):
         if web_assets is not None:
             try:
                 b_manifest, b_token, b_subtitle, data = web_assets
-                web_tracks = DASH.from_url(b_manifest, self.session).to_tracks("en")
+                session = self.session
+                session.headers.update(self.config["headers"])
+                web_tracks = DASH.from_url(b_manifest, session).to_tracks("en")
                 web_heights = sorted([int(track.height) for track in web_tracks.videos], reverse=True)
             except Exception:
                 web_heights = None
@@ -312,9 +314,6 @@ class ALL4(Service):
             sys.exit(1)
 
         if not android_heights or android_heights[0] < 1080:
-            self.log.warning(
-                "ANDROID data returned None or is missing full quality profile, falling back to WEB data..."
-            )
             lic_token = self.decrypt_token(b_token, client="WEB")
             return b_manifest, lic_token, b_subtitle, data
         else:
@@ -322,7 +321,6 @@ class ALL4(Service):
             return a_manifest, lic_token, a_subtitle, data
 
     def android_playlist(self, video_id: str) -> tuple:
-        self.log.info("Requesting ANDROID assets...")
         url = self.config["android"]["vod"].format(video_id=video_id)
         headers = {"authorization": self.authorization}
 
@@ -342,9 +340,8 @@ class ALL4(Service):
         return manifest, token, subtitle, data
 
     def web_playlist(self, video_id: str) -> tuple:
-        self.log.info("Requesting WEB assets...")
         url = self.config["web"]["vod"].format(programmeId=video_id)
-        r = self.session.get(url)
+        r = self.session.get(url, headers=self.config["headers"])
         if not r.ok:
             self.log.warning("Request for WEB endpoint returned %s", r)
             return
