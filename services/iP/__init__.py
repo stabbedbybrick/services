@@ -15,7 +15,7 @@ from devine.core.manifests import DASH, HLS
 from devine.core.search_result import SearchResult
 from devine.core.service import Service
 from devine.core.titles import Episode, Movie, Movies, Series
-from devine.core.tracks import Audio, Chapter, Subtitle, Track, Tracks, Video
+from devine.core.tracks import Audio, Chapter, Subtitle, Tracks, Video
 from devine.core.utils.collections import as_list
 from devine.core.utils.sslciphers import SSLCiphers
 
@@ -45,7 +45,7 @@ class iP(Service):
                 iP:
                     cert: path/to/cert
     \b
-        - Use -v H.265 to request UHD tracks
+        - Use --range HLG to request H.265 UHD tracks
         - See which titles are available in UHD:
             https://www.bbc.co.uk/iplayer/help/questions/programme-availability/uhd-content
     """
@@ -64,15 +64,14 @@ class iP(Service):
     def __init__(self, ctx: Context, title: str):
         self.title = title
         self.vcodec = ctx.parent.params.get("vcodec")
+        self.range = ctx.parent.params.get("range_")
         super().__init__(ctx)
 
-        if self.vcodec == "H.265" and not self.config.get("cert"):
-            self.log.error("H.265 cannot be selected without a certificate")
+        if self.range[0].name == "HLG" and not self.config.get("cert"):
+            self.log.error("UHD tracks cannot be selected without an SSL certificate")
             sys.exit(1)
 
-        quality = ctx.parent.params.get("quality")
-        if quality and quality[0] > 1080 and self.vcodec != "H.265" and self.config.get("cert"):
-            self.log.info(" + Switched video codec to H.265 to be able to get 2160p video track")
+        elif self.range[0].name == "HLG" and self.config.get("cert"):
             self.vcodec = "H.265"
 
     def search(self) -> Generator[SearchResult, None, None]:
@@ -97,15 +96,13 @@ class iP(Service):
     def get_titles(self) -> Union[Movies, Series]:
         kind, pid = (re.match(self.TITLE_RE, self.title).group(i) for i in ("kind", "id"))
         if not pid:
-            self.log.error("Unable to parse title ID - is the URL or id correct?")
-            sys.exit(1)
+            raise ValueError("Unable to parse title ID - is the URL or id correct?")
 
         data = self.get_data(pid, slice_id=None)
         if data is None and kind == "episode":
-            return self.get_single_episode(self.title)
+            return self.get_single_episode(pid)
         elif data is None:
-            self.log.error("Metadata was not found - if %s is an episode, use full URL as input", pid)
-            sys.exit(1)
+            raise ValueError(f"Metadata was not found - if {pid} is an episode, use full URL as input")
 
         if "Film" in data["labels"]["category"]:
             return Movies(
@@ -122,7 +119,9 @@ class iP(Service):
             )
         else:
             seasons = [self.get_data(pid, x["id"]) for x in data["slices"] or [{"id": None}]]
-            episodes = [self.create_episode(episode, data) for season in seasons for episode in season["entities"]["results"]]
+            episodes = [
+                self.create_episode(episode, data) for season in seasons for episode in season["entities"]["results"]
+            ]
             return Series(episodes)
 
     def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
@@ -133,27 +132,32 @@ class iP(Service):
 
         versions = r.json().get("allAvailableVersions")
         if not versions:
+            # If API returns no versions, try to fetch from site source code
             r = self.session.get(self.config["base_url"].format(type="episode", pid=title.id))
             redux = re.search("window.__IPLAYER_REDUX_STATE__ = (.*?);</script>", r.text).group(1)
             data = json.loads(redux)
-            versions = [
-                {"pid": x.get("id") for x in data["versions"] if not x.get("kind") == "audio-described"}
-            ]
+            versions = [{"pid": x.get("id") for x in data["versions"] if not x.get("kind") == "audio-described"}]
 
         quality = [
             connection.get("height")
-            for i in (
-                self.check_all_versions(version)
-                for version in (x.get("pid") for x in versions)
-            )
+            for i in (self.check_all_versions(version) for version in (x.get("pid") for x in versions))
             for connection in i
             if connection.get("height")
         ]
         max_quality = max((h for h in quality if h < "1080"), default=None)
 
-        media = next((i for i in (self.check_all_versions(version)
-                    for version in (x.get("pid") for x in versions))
-                    if any(connection.get("height") == max_quality for connection in i)), None)
+        media = next(
+            (
+                i
+                for i in (self.check_all_versions(version) for version in (x.get("pid") for x in versions))
+                if any(connection.get("height") == max_quality for connection in i)
+            ),
+            None,
+        )
+
+        if not media:
+            self.log.error("No media found. If you're behind a VPN/proxy, you might be blocked")
+            sys.exit(1)
 
         connection = {}
         for video in [x for x in media if x["kind"] == "video"]:
@@ -189,7 +193,9 @@ class iP(Service):
             raise ValueError(f"Unsupported video media transfer format {connection['transferFormat']!r}")
 
         for video in tracks.videos:
-            # TODO: add HLG to UHD tracks
+            # UHD DASH manifest has no range information, so we add it manually
+            if video.codec == Video.Codec.HEVC:
+                video.range = Video.Range.HLG
 
             if any(re.search(r"-audio_\w+=\d+", x) for x in as_list(video.url)):
                 # create audio stream from the video stream
@@ -198,12 +204,14 @@ class iP(Service):
                     # use audio_url not video url, as to ignore video bitrate in ID
                     id_=hashlib.md5(audio_url.encode()).hexdigest()[0:7],
                     url=audio_url,
-                    codec=Audio.Codec.from_codecs("mp4a"),
-                    language=[v.language for v in video.data["hls"]["playlist"].media][0],
+                    codec=Audio.Codec.from_codecs(video.data["hls"]["playlist"].stream_info.codecs),
+                    language=video.data["hls"]["playlist"].media[0].language,
                     bitrate=int(self.find(r"-audio_\w+=(\d+)", as_list(video.url)[0]) or 0),
-                    channels=[v.channels for v in video.data["hls"]["playlist"].media][0],
+                    channels=video.data["hls"]["playlist"].media[0].channels,
                     descriptive=False,  # Not available
-                    descriptor=Track.Descriptor.HLS,
+                    descriptor=Audio.Descriptor.HLS,
+                    drm=video.drm,
+                    data=video.data,
                 )
                 if not tracks.exists(by_id=audio.id):
                     # some video streams use the same audio, so natural dupes exist
@@ -313,13 +321,12 @@ class iP(Service):
             data=episode,
         )
 
-    def get_single_episode(self, url: str) -> Series:
-        r = self.session.get(url)
+    def get_single_episode(self, pid: str) -> Series:
+        r = self.session.get(self.config["endpoints"]["episodes"].format(pid=pid))
         r.raise_for_status()
 
-        redux = re.search("window.__IPLAYER_REDUX_STATE__ = (.*?);</script>", r.text).group(1)
-        data = json.loads(redux)
-        subtitle = data["episode"].get("subtitle")
+        data = json.loads(r.content)
+        subtitle = data["episodes"][0].get("subtitle")
 
         if subtitle is not None:
             season_match = re.search(r"Series (\d+):", subtitle)
@@ -338,9 +345,9 @@ class iP(Service):
         return Series(
             [
                 Episode(
-                    id_=data["episode"]["id"],
+                    id_=data["episodes"][0]["id"],
                     service=self.__class__,
-                    title=data["episode"]["title"],
+                    title=data["episodes"][0]["title"],
                     season=season if subtitle else 0,
                     number=number if subtitle else 0,
                     name=name if subtitle else "",
