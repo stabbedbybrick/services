@@ -1,0 +1,8 @@
+endpoints:
+  base: https://corona.channel5.com
+  gist: https://gist.githubusercontent.com/stabbedbybrick/8726c719721eac50a28f7bc3c94f18e9/raw/s.txt?={timestamp}
+  content: https://corona.channel5.com/shows/{show}.json?platform=my5desktop
+  episodes: https://corona.channel5.com/shows/{show}/episodes.json?platform=my5desktop
+  single: https://corona.channel5.com/shows/{show}/seasons/{season}/episodes/{episode}.json?platform=my5desktop
+  vod: https://cassie.channel5.com/api/v2/media/my5desktopng/{id}.json?timestamp={timestamp}
+  search: https://corona.channel5.com/shows/search.json
