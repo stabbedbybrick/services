@@ -1,0 +1,5 @@
+endpoints:
+  content: https://tubitv.com/oz/videos/{content_id}/content?video_resources=hlsv6_widevine_nonclearlead&video_resources=hlsv6
+  search: https://tubitv.com/oz/search/{query}
+
+  
