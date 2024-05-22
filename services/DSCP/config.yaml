@@ -1,0 +1,7 @@
+endpoints:
+  info: https://global-prod.disco-api.com/bootstrapInfo
+  prod: "https://{region}-prod-direct.discoveryplus.com/cms/configs/web-prod"
+  show: "https://{region}-prod-direct.discoveryplus.com/cms/routes/show/{title_id}?include=default&decorators=viewingHistory,isFavorite,playbackAllowed"
+  seasons: "https://{region}-prod-direct.discoveryplus.com/cms/collections/{content_id}?include=default&decorators=viewingHistory,isFavorite,playbackAllowed,contentAction,badges&{season}&{show_id}"
+  playback: "https://{region}-prod-direct.discoveryplus.com/playback/v3/videoPlaybackInfo"
+  search: "https://{region}-prod-direct.discoveryplus.com/cms/routes/search/result?include=default&decorators=viewingHistory,isFavorite,playbackAllowed,contentAction,badges&contentFilter[query]={query}&page[items.number]=1&page[items.size]=8"
