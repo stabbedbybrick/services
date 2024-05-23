@@ -292,8 +292,11 @@ class DSCP(Service):
 
     # Service specific functions
 
-    def period_filter(self, period):
-        return "dash_clear" in period.findtext("BaseURL")
+    def period_filter(self, period: Any) -> bool:
+        if period.findtext("BaseURL"):
+            return "dash_clear" in period.findtext("BaseURL")
+
+        return False
 
     def configure(self):
         self.session.headers.update(
@@ -301,16 +304,14 @@ class DSCP(Service):
                 "origin": "https://www.discoveryplus.com",
                 "referer": "https://www.discoveryplus.com/",
                 "x-disco-client": "WEB:UNKNOWN:dplus_us:2.44.4",
-                "x-disco-params": "realm=go,siteLookupKey=dplus_us,bid=dplus,features=ar",
+                "x-disco-params": "realm=go,bid=dplus,hn=www.discoveryplus.com,hth=,features=ar",
             }
         )
 
         info = self.session.get(self.config["endpoints"]["info"]).json()
         self.region = info["data"]["attributes"]["baseApiUrl"].split("-")[0].split("//")[1]
-        self.territory = info["data"]["attributes"]["mainTerritoryCode"]
 
-        site = self.session.get(self.config["endpoints"]["prod"].format(region=self.region))
-        if not site.ok:
-            raise ConnectionError(site.json())
+        user = self.session.get(self.config["endpoints"]["user"].format(region=self.region)).json()
+        self.territory = user["data"]["attributes"]["currentLocationTerritory"]
+        self.site_id = user["meta"]["site"]["id"]
 
-        self.site_id = site.json()["meta"]["site"]["id"]

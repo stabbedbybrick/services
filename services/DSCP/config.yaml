@@ -1,5 +1,6 @@
 endpoints:
   info: https://global-prod.disco-api.com/bootstrapInfo
+  user: https://{region}-prod-direct.discoveryplus.com/users/me
   prod: "https://{region}-prod-direct.discoveryplus.com/cms/configs/web-prod"
   show: "https://{region}-prod-direct.discoveryplus.com/cms/routes/show/{title_id}?include=default&decorators=viewingHistory,isFavorite,playbackAllowed"
   seasons: "https://{region}-prod-direct.discoveryplus.com/cms/collections/{content_id}?include=default&decorators=viewingHistory,isFavorite,playbackAllowed,contentAction,badges&{season}&{show_id}"
