@@ -259,6 +259,10 @@ class DSCP(Service):
                 self.log.error("- Access Denied. Please check your subscription.")
                 sys.exit(1)
 
+            if "invalid.token" in res["errors"][0]["code"]:
+                self.log.error("- Invalid Token. Cookies are invalid or may have expired.")
+                sys.exit(1)
+
             raise ConnectionError(res["errors"])
 
         streaming = res["data"]["attributes"]["streaming"][0]
