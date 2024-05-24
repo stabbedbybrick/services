@@ -124,7 +124,7 @@ class DSCP(Service):
                         name=ep["attributes"]["name"],
                         language=ep["attributes"]["audioTracks"][0]
                         if ep["attributes"].get("audioTracks")
-                        else self.territory,
+                        else self.user_language,
                         data=ep,
                     )
                     for episodes in videos
@@ -317,5 +317,6 @@ class DSCP(Service):
 
         user = self.session.get(self.config["endpoints"]["user"].format(region=self.region)).json()
         self.territory = user["data"]["attributes"]["currentLocationTerritory"]
+        self.user_language = user["data"]["attributes"]["clientTranslationLanguageTags"][0]
         self.site_id = user["meta"]["site"]["id"]
 
