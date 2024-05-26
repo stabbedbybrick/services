@@ -85,7 +85,7 @@ class DSCP(Service):
             kind, content_id = (re.match(self.TITLE_RE, self.title).group(i) for i in ("type", "id"))
         except Exception:
             raise ValueError("Could not parse ID from title - is the URL correct?")
-        
+
         if kind == "video":
             self.log.error("Single videos are not supported by this service.")
             sys.exit(1)
@@ -151,14 +151,14 @@ class DSCP(Service):
                     "appBundle": "undefined",
                     "device": {
                         "browser": {
-                            "name": "firefox",
-                            "version": "126.0",
+                            "name": "chrome",
+                            "version": "125.0.0.0",
                         },
                         "id": "",
                         "language": "en",
                         "make": "",
                         "model": "",
-                        "name": "firefox",
+                        "name": "chrome",
                         "os": "Windows",
                         "osVersion": "NT 10.0",
                         "player": {
@@ -170,9 +170,9 @@ class DSCP(Service):
                     "gdpr": 0,
                     "platform": "desktop",
                     "playbackId": str(uuid.uuid4()),
-                    "product": self.site_id,
+                    "product": "dplus_se" if self.site_id != "dplus_se" else "dplus_us",
                     "sessionId": str(uuid.uuid4()),
-                    "siteId": self.site_id,
+                    "siteId": "dplus_se" if self.site_id != "dplus_se" else "dplus_us",
                     "streamProvider": {
                         "hlsVersion": 6,
                         "pingConfig": 0,
@@ -215,6 +215,14 @@ class DSCP(Service):
                                     ],
                                     "maxLevel": "5.2",
                                 },
+                                {
+                                    "codec": "h265",
+                                    "profiles": [
+                                        "main10",
+                                        "main",
+                                    ],
+                                    "maxLevel": "5.2",
+                                },
                             ],
                             "hdrFormats": [],
                         },
@@ -246,6 +254,7 @@ class DSCP(Service):
                     ],
                     "hwDecodingCapabilities": [
                         "H264",
+                        "H265",
                     ],
                     "soundCapabilities": [
                         "STEREO",
@@ -272,9 +281,7 @@ class DSCP(Service):
             self.token = streaming["protection"]["drmToken"]
             self.license = streaming["protection"]["schemes"]["widevine"]["licenseUrl"]
 
-        tracks = DASH.from_url(url=manifest, session=self.session).to_tracks(
-            language=title.language, period_filter=self.period_filter
-        )
+        tracks = DASH.from_url(url=manifest, session=self.session).to_tracks(language=title.language)
 
         return tracks
 
@@ -296,19 +303,13 @@ class DSCP(Service):
 
     # Service specific functions
 
-    def period_filter(self, period: Any) -> bool:
-        if period.findtext("BaseURL"):
-            return "dash_clear" in period.findtext("BaseURL")
-
-        return False
-
     def configure(self):
         self.session.headers.update(
             {
                 "origin": "https://www.discoveryplus.com",
                 "referer": "https://www.discoveryplus.com/",
                 "x-disco-client": "WEB:UNKNOWN:dplus_us:2.44.4",
-                "x-disco-params": "realm=go,bid=dplus,hn=www.discoveryplus.com,hth=,features=ar",
+                "x-disco-params": "realm=go,siteLookupKey=dplus_us,bid=dplus,hn=www.discoveryplus.com,hth=,uat=false",
             }
         )
 
@@ -316,7 +317,9 @@ class DSCP(Service):
         self.region = info["data"]["attributes"]["baseApiUrl"].split("-")[0].split("//")[1]
 
         user = self.session.get(self.config["endpoints"]["user"].format(region=self.region)).json()
+        if "errors" in user:
+            raise ConnectionError(user["errors"])
+
         self.territory = user["data"]["attributes"]["currentLocationTerritory"]
         self.user_language = user["data"]["attributes"]["clientTranslationLanguageTags"][0]
         self.site_id = user["meta"]["site"]["id"]
-
