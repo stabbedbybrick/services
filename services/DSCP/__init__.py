@@ -26,13 +26,14 @@ class DSCP(Service):
     Author: stabbedbybrick
     Authorization: Cookies
     Robustness:
-      L3: 1080p, AAC2.0
+      L3: 2160p, AAC2.0
 
     \b
     Tips:
         - Input can be either complete title URL or just the path: '/show/richard-hammonds-workshop'
         - Use the --lang LANG_RANGE option to request non-english tracks
         - Single video URLs are currently not supported
+        - use -v H.265 to request H.265 tracks
 
     """
 
@@ -48,6 +49,7 @@ class DSCP(Service):
 
     def __init__(self, ctx: Context, title: str):
         self.title = title
+        self.vcodec = ctx.parent.params.get("vcodec")
         super().__init__(ctx)
 
         self.license = None
@@ -65,7 +67,7 @@ class DSCP(Service):
         self.configure()
 
     def search(self) -> Generator[SearchResult, None, None]:
-        r = self.session.get(self.config["endpoints"]["search"].format(region=self.region, query=self.title))
+        r = self.session.get(self.config["endpoints"]["search"].format(base_api=self.base_api, query=self.title))
         r.raise_for_status()
         data = r.json()
 
@@ -91,9 +93,15 @@ class DSCP(Service):
             sys.exit(1)
 
         if kind == "show":
-            r = self.session.get(self.config["endpoints"]["show"].format(region=self.region, title_id=content_id))
-            r.raise_for_status()
-            data = r.json()
+            data = self.session.get(
+                self.config["endpoints"]["show"].format(base_api=self.base_api, title_id=content_id)
+            ).json()
+            if "errors" in data:
+                if "invalid.token" in data["errors"][0]["code"]:
+                    self.log.error("- Invalid Token. Cookies are invalid or may have expired.")
+                    sys.exit(1)
+
+                raise ConnectionError(data["errors"])
 
             content = next(x for x in data["included"] if x["attributes"].get("alias") == "generic-show-episodes")
             content_id = content["id"]
@@ -104,7 +112,7 @@ class DSCP(Service):
             seasons = [
                 self.session.get(
                     self.config["endpoints"]["seasons"].format(
-                        region=self.region, content_id=content_id, season=season, show_id=show_id
+                        base_api=self.base_api, content_id=content_id, season=season, show_id=show_id
                     )
                 ).json()
                 for season in season_params
@@ -134,138 +142,32 @@ class DSCP(Service):
             )
 
     def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
+        platform = "firetv" if self.vcodec == "H.265" else "desktop"
         res = self.session.post(
-            self.config["endpoints"]["playback"].format(region=self.region),
+            self.config["endpoints"]["playback"].format(base_api=self.base_api),
             json={
                 "videoId": title.id,
-                "wisteriaProperties": {
-                    "advertiser": {
-                        "adId": "|84958235701907329361495486486652228049||17163182474853637414c74993b0cb4f9a42062d41449",
-                        "firstPlay": 0,
-                        "fwDid": "",
-                        "fwIsLat": 0,
-                        "interactiveCapabilities": [
-                            "brightline",
-                        ],
-                    },
-                    "appBundle": "undefined",
-                    "device": {
-                        "browser": {
-                            "name": "chrome",
-                            "version": "125.0.0.0",
-                        },
-                        "id": "",
-                        "language": "en",
-                        "make": "",
-                        "model": "",
-                        "name": "chrome",
-                        "os": "Windows",
-                        "osVersion": "NT 10.0",
-                        "player": {
-                            "name": "Discovery Player Web",
-                            "version": "",
-                        },
-                        "type": "desktop",
-                    },
-                    "gdpr": 0,
-                    "platform": "desktop",
-                    "playbackId": str(uuid.uuid4()),
-                    "product": "dplus_se" if self.site_id != "dplus_se" else "dplus_us",
-                    "sessionId": str(uuid.uuid4()),
-                    "siteId": "dplus_se" if self.site_id != "dplus_se" else "dplus_us",
-                    "streamProvider": {
-                        "hlsVersion": 6,
-                        "pingConfig": 0,
-                        "suspendBeaconing": 0,
-                        "version": "1.0.0",
-                    },
-                },
-                "deviceCapabilities": {
-                    "manifests": {
-                        "formats": {
-                            "dash": {},
-                        },
-                    },
-                    "segments": {
-                        "formats": {
-                            "fmp4": {},
-                        },
-                    },
-                    "codecs": {
-                        "audio": {
-                            "decoders": [
-                                {
-                                    "codec": "aac",
-                                    "profiles": [
-                                        "lc",
-                                        "hev",
-                                        "hev2",
-                                    ],
-                                },
-                            ],
-                        },
-                        "video": {
-                            "decoders": [
-                                {
-                                    "codec": "h264",
-                                    "profiles": [
-                                        "high",
-                                        "main",
-                                        "baseline",
-                                    ],
-                                    "maxLevel": "5.2",
-                                },
-                                {
-                                    "codec": "h265",
-                                    "profiles": [
-                                        "main10",
-                                        "main",
-                                    ],
-                                    "maxLevel": "5.2",
-                                },
-                            ],
-                            "hdrFormats": [],
-                        },
-                    },
-                    "contentProtection": {
-                        "contentDecryptionModules": [
-                            {
-                                "drmKeySystem": "clearkey",
-                            },
-                            {
-                                "drmKeySystem": "widevine",
-                                "maxSecurityLevel": "l3",
-                            },
-                        ],
-                    },
-                },
                 "deviceInfo": {
-                    "adBlocker": False,
-                    "deviceId": "",
-                    "drmTypes": {
-                        "widevine": True,
-                        "playready": False,
-                        "fairplay": False,
-                        "clearkey": True,
-                    },
-                    "drmSupported": True,
-                    "hdrCapabilities": [
-                        "SDR",
-                    ],
-                    "hwDecodingCapabilities": [
-                        "H264",
-                        "H265",
-                    ],
-                    "soundCapabilities": [
-                        "STEREO",
-                    ],
+                    "adBlocker": "false",
+                    "drmSupported": "true",
+                    "hwDecodingCapabilities": ["H264", "H265"],
+                    "screen": {"width": 3840, "height": 2160},
+                    "player": {"width": 3840, "height": 2160},
+                },
+                "wisteriaProperties": {
+                    "advertiser": {"firstPlay": 0, "fwIsLat": 0},
+                    "device": {"browser": {"name": "chrome", "version": "96.0.4664.55"}, "type": platform},
+                    "platform": platform,
+                    "product": "dplus_emea",
+                    "sessionId": str(uuid.uuid1()),
+                    "streamProvider": {"suspendBeaconing": 0, "hlsVersion": 7, "pingConfig": 1},
                 },
             },
         ).json()
 
         if "errors" in res:
             if "missingpackage" in res["errors"][0]["code"]:
-                self.log.error("- Access Denied. Please check your subscription.")
+                self.log.error("- Access Denied. Title is not available for this account.")
                 sys.exit(1)
 
             if "invalid.token" in res["errors"][0]["code"]:
@@ -306,18 +208,21 @@ class DSCP(Service):
     def configure(self):
         self.session.headers.update(
             {
-                "origin": "https://www.discoveryplus.com",
-                "referer": "https://www.discoveryplus.com/",
+                "user-agent": "Chrome/96.0.4664.55",
                 "x-disco-client": "WEB:UNKNOWN:dplus_us:2.44.4",
                 "x-disco-params": "realm=go,siteLookupKey=dplus_us,bid=dplus,hn=www.discoveryplus.com,hth=,uat=false",
             }
         )
 
         info = self.session.get(self.config["endpoints"]["info"]).json()
-        self.region = info["data"]["attributes"]["baseApiUrl"].split("-")[0].split("//")[1]
+        self.base_api = info["data"]["attributes"]["baseApiUrl"]
 
-        user = self.session.get(self.config["endpoints"]["user"].format(region=self.region)).json()
+        user = self.session.get(self.config["endpoints"]["user"].format(base_api=self.base_api)).json()
         if "errors" in user:
+            if "invalid.token" in user["errors"][0]["code"]:
+                self.log.error("- Invalid Token. Cookies are invalid or may have expired.")
+                sys.exit(1)
+
             raise ConnectionError(user["errors"])
 
         self.territory = user["data"]["attributes"]["currentLocationTerritory"]
