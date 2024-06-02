@@ -36,6 +36,8 @@ class ITV(Service):
             SERIES: https://www.itv.com/watch/bay-of-fires/10a5270
             EPISODE: https://www.itv.com/watch/bay-of-fires/10a5270/10a5270a0001
             FILM: https://www.itv.com/watch/mad-max-beyond-thunderdome/2a7095
+        - Some shows aren't listed as series, only as "Latest episodes"
+            Download by SERIES URL for those titles, not by EPISODE URL
 
     \b
     Examples:
@@ -155,7 +157,30 @@ class ITV(Service):
 
     def get_titles(self) -> Union[Movies, Series]:
         data = self.get_data(self.title)
-        kind = data["seriesList"][0]["seriesType"]
+        kind = next(
+            (x.get("seriesType") for x in data.get("seriesList") if x.get("seriesType") in ["SERIES", "FILM"]), None
+        )
+
+        # Some shows are not listed as "SERIES" or "FILM", only as "Latest episodes"
+        if not kind and next(
+            (x for x in data.get("seriesList") if x.get("seriesLabel").lower() == "latest episodes"), None
+        ):
+            titles = data["seriesList"][0]["titles"]
+            return Series(
+                [
+                    Episode(
+                        id_=episode["episodeId"],
+                        service=self.__class__,
+                        title=data["programme"]["title"],
+                        season=episode.get("series") if isinstance(episode.get("series"), int) else 0,
+                        number=episode.get("episode") if isinstance(episode.get("episode"), int) else 0,
+                        name=episode["episodeTitle"],
+                        language="en",  # TODO: language detection
+                        data=episode,
+                    )
+                    for episode in titles
+                ]
+            )
 
         if kind == "SERIES" and data.get("episode"):
             episode = data.get("episode")
