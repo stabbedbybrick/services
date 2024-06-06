@@ -170,22 +170,37 @@ class ALL4(Service):
         data = r.json()
 
         if on_demand is not None:
-            return Series(
-                [
+            episodes = [
+                Episode(
+                    id_=episode["programmeId"],
+                    service=self.__class__,
+                    title=data["brand"]["title"],
+                    season=episode["seriesNumber"],
+                    number=episode["episodeNumber"],
+                    name=episode["originalTitle"],
+                    language="en",
+                    data=episode["assetInfo"].get("streaming"),
+                )
+                for episode in data["brand"]["episodes"]
+                if episode.get("assetInfo") and episode["programmeId"] == on_demand
+            ]
+            if not episodes:
+                # Parse HTML of episode page to find title
+                data = self.get_html(self.title)
+                episodes = [
                     Episode(
-                        id_=episode["programmeId"],
+                        id_=data["selectedEpisode"]["programmeId"],
                         service=self.__class__,
                         title=data["brand"]["title"],
-                        season=episode["seriesNumber"],
-                        number=episode["episodeNumber"],
-                        name=episode["originalTitle"],
+                        season=data["selectedEpisode"]["seriesNumber"] or 0,
+                        number=data["selectedEpisode"]["episodeNumber"] or 0,
+                        name=data["selectedEpisode"]["originalTitle"],
                         language="en",
-                        data=episode["assetInfo"].get("streaming"),
+                        data=data["selectedEpisode"],
                     )
-                    for episode in data["brand"]["episodes"]
-                    if episode.get("assetInfo") and episode["programmeId"] == on_demand
                 ]
-            )
+
+            return Series(episodes)
 
         elif data["brand"]["programmeType"] == "FM":
             return Movies(
@@ -222,7 +237,7 @@ class ALL4(Service):
     def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
         android_assets: tuple = self.android_playlist(title.id)
         web_assets: tuple = self.web_playlist(title.id)
-        self.manifest, self.license_token, subtitle, data = self.sort_assets(android_assets, web_assets)
+        self.manifest, self.license_token, subtitle, data = self.sort_assets(title, android_assets, web_assets)
         self.asset_id = int(title.data["assetId"])
 
         tracks = DASH.from_url(self.manifest, self.session).to_tracks(title.language)
@@ -290,11 +305,14 @@ class ALL4(Service):
 
     # Service specific functions
 
-    def sort_assets(self, android_assets: tuple, web_assets: tuple) -> tuple:
+    def sort_assets(self, title: Union[Movie, Episode], android_assets: tuple, web_assets: tuple) -> tuple:
+        android_heights = None
+        web_heights = None
+
         if android_assets is not None:
             try:
                 a_manifest, a_token, a_subtitle, data = android_assets
-                android_tracks = DASH.from_url(a_manifest, self.session).to_tracks("en")
+                android_tracks = DASH.from_url(a_manifest, self.session).to_tracks(title.language)
                 android_heights = sorted([int(track.height) for track in android_tracks.videos], reverse=True)
             except Exception:
                 android_heights = None
@@ -304,7 +322,7 @@ class ALL4(Service):
                 b_manifest, b_token, b_subtitle, data = web_assets
                 session = self.session
                 session.headers.update(self.config["headers"])
-                web_tracks = DASH.from_url(b_manifest, session).to_tracks("en")
+                web_tracks = DASH.from_url(b_manifest, session).to_tracks(title.language)
                 web_heights = sorted([int(track.height) for track in web_tracks.videos], reverse=True)
             except Exception:
                 web_heights = None
@@ -327,7 +345,7 @@ class ALL4(Service):
         r = self.session.get(url=url, headers=headers)
         if not r.ok:
             self.log.warning("Request for Android endpoint returned %s", r)
-            return
+            return None
 
         data = json.loads(r.content)
         manifest = data["videoProfiles"][0]["streams"][0]["uri"]
@@ -344,7 +362,7 @@ class ALL4(Service):
         r = self.session.get(url, headers=self.config["headers"])
         if not r.ok:
             self.log.warning("Request for WEB endpoint returned %s", r)
-            return
+            return None
 
         data = json.loads(r.content)
 
@@ -379,3 +397,18 @@ class ALL4(Service):
             data = unpad(cipher.decrypt(token), AES.block_size)
             dec_token = data.decode().split("|")[1]
             return dec_token.strip()
+
+    def get_html(self, url: str) -> dict:
+        r = self.session.get(url=url, headers=self.config["headers"])
+        r.raise_for_status()
+
+        init_data = re.search(
+            "<script>window.__PARAMS__ = (.*)</script>",
+            "".join(r.content.decode().replace("\u200c", "").replace("\r\n", "").replace("undefined", "null")),
+        )
+        try:
+            data = json.loads(init_data.group(1))
+            return data["initialData"]
+        except Exception:
+            self.log.error(f"Failed to get episode for {url}")
+            sys.exit(1)
