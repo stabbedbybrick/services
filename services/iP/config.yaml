@@ -6,6 +6,6 @@ endpoints:
   episodes: https://ibl.api.bbci.co.uk/ibl/v1/episodes/{pid}?rights=mobile&availability=available
   metadata: https://graph.ibl.api.bbc.co.uk/
   playlist: https://www.bbc.co.uk/programmes/{pid}/playlist.json
-  manifest: https://open.live.bbc.co.uk/mediaselector/6/select/version/2.0/mediaset/{mediaset}/vpid/{vpid}/
-  manifest_: https://securegate.iplayer.bbc.co.uk/mediaselector/6/select/version/2.0/vpid/{vpid}/format/json/mediaset/{mediaset}/proto/https
+  open: https://{}/mediaselector/6/select/version/2.0/mediaset/{}/vpid/{}/
+  secure: https://{}/mediaselector/6/select/version/2.0/vpid/{}/format/json/mediaset/{}/proto/https
   search: https://search.api.bbci.co.uk/formula/iplayer-ibl-root

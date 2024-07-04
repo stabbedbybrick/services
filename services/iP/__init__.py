@@ -63,15 +63,18 @@ class iP(Service):
 
     def __init__(self, ctx: Context, title: str):
         self.title = title
+        super().__init__(ctx)
         self.vcodec = ctx.parent.params.get("vcodec")
         self.range = ctx.parent.params.get("range_")
-        super().__init__(ctx)
 
-        if self.range[0].name == "HLG" and not self.config.get("cert"):
-            self.log.error("UHD tracks cannot be selected without an SSL certificate")
+        self.session.headers.update({"user-agent": "BBCiPlayer/5.17.2.32046"})
+
+        if self.range and self.range[0].name == "HLG" and not self.config.get("cert"):
+            self.log.error("HLG tracks cannot be requested without an SSL certificate")
             sys.exit(1)
 
-        elif self.range[0].name == "HLG" and self.config.get("cert"):
+        elif self.range and self.range[0].name == "HLG" and self.config.get("cert"):
+            self.session.headers.update({"user-agent": self.config["user_agent"]})
             self.vcodec = "H.265"
 
     def search(self) -> Generator[SearchResult, None, None]:
@@ -94,9 +97,10 @@ class iP(Service):
             )
 
     def get_titles(self) -> Union[Movies, Series]:
-        kind, pid = (re.match(self.TITLE_RE, self.title).group(i) for i in ("kind", "id"))
-        if not pid:
-            raise ValueError("Unable to parse title ID - is the URL or id correct?")
+        try:
+            kind, pid = (re.match(self.TITLE_RE, self.title).group(i) for i in ("kind", "id"))
+        except Exception:
+            raise ValueError("Could not parse ID from title - is the URL correct?")
 
         data = self.get_data(pid, slice_id=None)
         if data is None and kind == "episode":
@@ -138,25 +142,17 @@ class iP(Service):
             data = json.loads(redux)
             versions = [{"pid": x.get("id") for x in data["versions"] if not x.get("kind") == "audio-described"}]
 
-        quality = [
-            connection.get("height")
-            for i in (self.check_all_versions(version) for version in (x.get("pid") for x in versions))
-            for connection in i
-            if connection.get("height")
-        ]
+        connections = [self.check_all_versions(version) for version in (x.get("pid") for x in versions)]
+        quality = [connection.get("height") for i in connections for connection in i if connection.get("height")]
         max_quality = max((h for h in quality if h < "1080"), default=None)
 
         media = next(
-            (
-                i
-                for i in (self.check_all_versions(version) for version in (x.get("pid") for x in versions))
-                if any(connection.get("height") == max_quality for connection in i)
-            ),
+            (i for i in connections if any(connection.get("height") == max_quality or "2160" for connection in i)),
             None,
         )
 
         if not media:
-            self.log.error("No media found. If you're behind a VPN/proxy, you might be blocked")
+            self.log.error(" - Selection unavailable. Title doesn't exist or your IP address is blocked")
             sys.exit(1)
 
         connection = {}
@@ -266,33 +262,35 @@ class iP(Service):
         return r.json()["data"]["programme"]
 
     def check_all_versions(self, vpid: str) -> list:
-        if self.config.get("cert"):
-            url = self.config["endpoints"]["manifest_"].format(
-                vpid=vpid,
-                mediaset="iptv-uhd" if self.vcodec == "H.265" else "iptv-all",
-            )
+        media = None
 
+        if self.vcodec == "H.265":
             session = self.session
             session.mount("https://", SSLCiphers())
             session.mount("http://", SSLCiphers())
-            manifest = session.get(
-                url, headers={"user-agent": self.config["user_agent"]}, cert=self.config["cert"]
-            ).json()
+            mediaset = "iptv-uhd"
 
-            if "result" in manifest:
-                return {}
+            for mediator in ["securegate.iplayer.bbc.co.uk", "ipsecure.stage.bbc.co.uk"]:
+                availability = session.get(
+                    self.config["endpoints"]["secure"].format(mediator, vpid, mediaset),
+                    cert=self.config["cert"],
+                ).json()
+                if availability.get("media"):
+                    media = availability["media"]
+                    break
 
         else:
-            url = self.config["endpoints"]["manifest"].format(
-                vpid=vpid,
-                mediaset="iptv-all",
-            )
-            manifest = self.session.get(url).json()
+            mediaset = "iptv-all"
 
-            if "result" in manifest:
-                return {}
+            for mediator in ["open.live.bbc.co.uk", "open.stage.bbc.co.uk"]:
+                availability = self.session.get(
+                    self.config["endpoints"]["open"].format(mediator, mediaset, vpid),
+                ).json()
+                if availability.get("media"):
+                    media = availability["media"]
+                    break
 
-        return manifest["media"]
+        return media
 
     def create_episode(self, episode: dict, data: dict) -> Episode:
         title = episode["episode"]["title"]["default"].strip()
