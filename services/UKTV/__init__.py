@@ -186,8 +186,8 @@ class UKTV(Service):
         period_duration = manifest.get("mediaPresentationDuration")
         period_duration = DASH.pt_to_sec(period_duration)
 
-        _, minutes, seconds = str(timedelta(seconds=period_duration - 6)).split(":")
-        new_duration = f"PT{int(minutes)}M{float(seconds):.3f}S"
+        hours, minutes, seconds = str(timedelta(seconds=period_duration - 6)).split(":")
+        new_duration = f"PT{hours}H{minutes}M{seconds}S"
         manifest.set("mediaPresentationDuration", new_duration)
 
         return etree.tostring(manifest, encoding="unicode")
