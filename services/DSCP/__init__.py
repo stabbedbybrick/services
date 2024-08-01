@@ -73,6 +73,7 @@ class DSCP(Service):
 
         self.session.cookies.update(cookies)
 
+        self.base_url = None
         info = self._request("GET", "https://global-prod.disco-api.com/bootstrapInfo")
         self.base_url = info["data"]["attributes"].get("baseApiUrl")
 
