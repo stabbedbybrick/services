@@ -12,11 +12,11 @@ from urllib.parse import urljoin
 import click
 from click import Context
 from devine.core.credential import Credential
-from devine.core.manifests.dash import DASH
+from devine.core.manifests import DASH, HLS
 from devine.core.search_result import SearchResult
 from devine.core.service import Service
 from devine.core.titles import Episode, Movie, Movies, Series
-from devine.core.tracks import Chapter, Tracks
+from devine.core.tracks import Chapters, Tracks
 from requests import Request
 
 
@@ -29,7 +29,10 @@ class DSCP(Service):
     Author: stabbedbybrick
     Authorization: Cookies
     Robustness:
-      L3: 2160p, AAC2.0
+        Widevine:
+            L3: 2160p, AAC2.0
+        ClearKey:
+            AES-128: 1080p, AAC2.0
 
     \b
     Tips:
@@ -38,12 +41,12 @@ class DSCP(Service):
             EPISODE: /video/richard-hammonds-workshop/new-beginnings
             SPORT: /video/sport/tnt-sports-1/uefa-champions-league
         - Use the --lang LANG_RANGE option to request non-english tracks
-        - use -v H.265 to request H.265 tracks
+        - use -v H.265 to request H.265 UHD tracks (if available)
 
     \b
-    Known issues:
-        - Devine can't properly parse certain manifests, causing an error in download workers.
-        - Sport streams specifically seem to be the most affected by this.
+    Notes:
+        - Using '-v H.265' will request DASH manifest even if no H.265 tracks are available.
+          This can be useful if HLS is not available for some reason.
 
     """
 
@@ -118,43 +121,53 @@ class DSCP(Service):
         return Series(episodes)
 
     def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
-        platform = "firetv" if self.vcodec == "H.265" else "desktop"
-        res = self._request(
-            "POST",
-            "/playback/v3/videoPlaybackInfo",
-            payload={
-                "videoId": title.id,
-                "deviceInfo": {
-                    "adBlocker": "false",
-                    "drmSupported": "true",
-                    "hwDecodingCapabilities": ["H264", "H265"],
-                    "screen": {"width": 3840, "height": 2160},
-                    "player": {"width": 3840, "height": 2160},
-                },
-                "wisteriaProperties": {
-                    "advertiser": {"firstPlay": 0, "fwIsLat": 0},
-                    "device": {"browser": {"name": "chrome", "version": "96.0.4664.55"}, "type": platform},
-                    "platform": platform,
-                    "product": "dplus_emea",
-                    "sessionId": str(uuid.uuid1()),
-                    "streamProvider": {"suspendBeaconing": 0, "hlsVersion": 7, "pingConfig": 1},
-                },
+        payload = {
+            "videoId": title.id,
+            "deviceInfo": {
+                "adBlocker": "false",
+                "drmSupported": "false",
+                "hwDecodingCapabilities": ["H264", "H265"],
+                "screen": {"width": 3840, "height": 2160},
+                "player": {"width": 3840, "height": 2160},
             },
-        )
+            "wisteriaProperties": {
+                "product": "dplus_emea",
+                "sessionId": str(uuid.uuid1()),
+            },
+        }
 
-        self.license = None
+        if self.vcodec == "H.265":
+            payload["wisteriaProperties"]["device"] = {
+                "browser": {"name": "chrome", "version": "96.0.4664.55"},
+                "type": "firetv",
+            }
+            payload["wisteriaProperties"]["platform"] = "firetv"
+
+        res = self._request("POST", "/playback/v3/videoPlaybackInfo", payload=payload)
+
         streaming = res["data"]["attributes"]["streaming"][0]
+        streaming_type = streaming["type"].strip().lower()
         manifest = streaming["url"]
+
+        self.token = None
+        self.license = None
         if streaming["protection"]["drmEnabled"]:
             self.token = streaming["protection"]["drmToken"]
             self.license = streaming["protection"]["schemes"]["widevine"]["licenseUrl"]
 
-        tracks = DASH.from_url(url=manifest, session=self.session).to_tracks(language=title.language)
+        if streaming_type == "hls":
+            tracks = HLS.from_url(url=manifest, session=self.session).to_tracks(language=title.language)
+
+        elif streaming_type == "dash":
+            tracks = DASH.from_url(url=manifest, session=self.session).to_tracks(language=title.language)
+
+        else:
+            raise ValueError(f"Unknown streaming type: {streaming_type}")
 
         return tracks
 
-    def get_chapters(self, title: Union[Movie, Episode]) -> list[Chapter]:
-        return []
+    def get_chapters(self, title: Union[Movie, Episode]) -> Chapters:
+        return Chapters()
 
     def get_widevine_service_certificate(self, **_: Any) -> str:
         return None
@@ -186,12 +199,8 @@ class DSCP(Service):
 
         seasons = [
             self._request(
-                "GET",
-                "/cms/collections/{}?{}&{}".format(content_id, season, show_id),
-                params={
-                    "include": "default",
-                    "decorators": "playbackAllowed,contentAction,badges",
-                },
+                "GET", "/cms/collections/{}?{}&{}".format(content_id, season, show_id),
+                params={"include": "default", "decorators": "playbackAllowed,contentAction,badges"},
             )
             for season in season_params
         ]
@@ -231,15 +240,12 @@ class DSCP(Service):
         if not video_id:
             raise IndexError("Episode id not found")
 
-        params = {
-            "decorators": "isFavorite",
-            "include": "primaryChannel",
-        }
+        params = {"decorators": "isFavorite", "include": "primaryChannel"}
         content = self._request("GET", "/content/videos/{}".format(video_id), params=params)
         episode = content["data"]["attributes"]
         name = episode.get("name")
         if episode.get("secondaryTitle"):
-            name += " - " + episode.get("secondaryTitle")
+            name += f" {episode.get('secondaryTitle')}"
 
         return [
             Episode(
