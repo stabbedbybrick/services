@@ -5,6 +5,7 @@ import re
 from collections.abc import Generator
 from http.cookiejar import CookieJar
 from typing import Any, Optional
+from urllib.parse import urljoin
 
 import click
 import m3u8
@@ -175,7 +176,7 @@ class TUBI(Service):
         tracks = HLS.from_url(url=self.manifest, session=self.session).to_tracks(language=title.language)
         for track in tracks:
             master = m3u8.loads(self.session.get(track.url).text, uri=track.url)
-            track.url = master.segments[0].uri
+            track.url = urljoin(master.base_uri, master.segments[0].uri)
             track.descriptor = Track.Descriptor.URL
 
         if title.data.get("subtitles"):
