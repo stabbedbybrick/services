@@ -1,24 +1,22 @@
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
-import json
 import re
+import tempfile
+import os
 from collections.abc import Generator
-from datetime import datetime
 from typing import Any, Union
 from urllib.parse import urlparse, urlunparse
 
 import click
+import requests
 from click import Context
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import unpad
 from devine.core.manifests.dash import DASH
 from devine.core.search_result import SearchResult
 from devine.core.service import Service
 from devine.core.titles import Episode, Movie, Movies, Series
 from devine.core.tracks import Chapter, Tracks
+from devine.core.utils.sslciphers import SSLCiphers
 from pywidevine.cdm import Cdm as WidevineCdm
 
 
@@ -26,7 +24,6 @@ class MY5(Service):
     """
     \b
     Service code for Channel 5's My5 streaming service (https://channel5.com).
-    Credit to @Diazole(https://github.com/Diazole/my5-dl) for solving the hmac.
 
     \b
     Author: stabbedbybrick
@@ -61,9 +58,7 @@ class MY5(Service):
         self.title = title
         super().__init__(ctx)
 
-        self.gist = self.session.get(
-            self.config["endpoints"]["gist"].format(timestamp=datetime.now().timestamp())
-        ).json()
+        self.session.headers.update({"user-agent": self.config["user_agent"]})
 
     def search(self) -> Generator[SearchResult, None, None]:
         params = {
@@ -173,32 +168,30 @@ class MY5(Service):
 
     # Service specific functions
 
-    def decrypt_data(self, media: str) -> dict:
-        key = base64.b64decode(self.gist["key"])
-
-        r = self.session.get(media)
-        if not r.ok:
-            raise ConnectionError(r.json().get("message"))
-
-        content = r.json()
-
-        iv = base64.urlsafe_b64decode(content["iv"])
-        data = base64.urlsafe_b64decode(content["data"])
-
-        cipher = AES.new(key=key, iv=iv, mode=AES.MODE_CBC)
-        decrypted_data = unpad(cipher.decrypt(data), AES.block_size)
-        return json.loads(decrypted_data)
-
     def get_playlist(self, asset_id: str) -> tuple:
-        secret = self.gist["hmac"]
+        session = self.session
+        for prefix in ("https://", "http://"):
+            session.mount(prefix, SSLCiphers())
 
-        timestamp = datetime.now().timestamp()
-        vod = self.config["endpoints"]["vod"].format(id=asset_id, timestamp=f"{timestamp}")
-        sig = hmac.new(base64.b64decode(secret), vod.encode(), hashlib.sha256)
-        auth = base64.urlsafe_b64encode(sig.digest()).decode()
-        vod += f"&auth={auth}"
+        cert_binary = base64.b64decode(self.config["certificate"])
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pem") as cert_file:
+            cert_file.write(cert_binary)
+            cert_path = cert_file.name
+        try:
+            r = session.get(url=self.config["endpoints"]["auth"].format(title_id=asset_id), cert=cert_path)
+        except requests.RequestException as e:
+            if "Max retries exceeded" in str(e):
+                raise ConnectionError(
+                    "Permission denied. If you're behind a VPN/proxy, you might be blocked"
+                )
+            else:
+                raise ConnectionError(f"Failed to request assets: {str(e)}")
+        finally:
+            os.remove(cert_path)
 
-        data = self.decrypt_data(vod)
+        data = r.json()
+        if not data.get("assets"):
+            raise ValueError(f"Could not find asset: {data}")
 
         asset = [x for x in data["assets"] if x["drm"] == "widevine"][0]
         rendition = asset["renditions"][0]
