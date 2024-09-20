@@ -110,7 +110,7 @@ class iP(Service):
         elif data is None:
             raise ValueError(f"Metadata was not found - if {pid} is an episode, use full URL as input")
 
-        if "Film" in data["labels"]["category"]:
+        if not data.get("labels") or "Film" in data.get("labels", {}).get("category", ""):
             data = self.session.get(self.config["endpoints"]["episodes"].format(pid=pid)).json()
             if not data.get("episodes"):
                 raise ValueError(f"Metadata was not found for {pid}")
