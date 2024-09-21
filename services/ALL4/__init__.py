@@ -179,7 +179,7 @@ class ALL4(Service):
                     number=episode["episodeNumber"],
                     name=episode["originalTitle"],
                     language="en",
-                    data=episode["assetInfo"].get("streaming"),
+                    data=episode["assetInfo"].get("streaming") or episode["assetInfo"].get("download"),
                 )
                 for episode in data["brand"]["episodes"]
                 if episode.get("assetInfo") and episode["programmeId"] == on_demand
@@ -211,7 +211,7 @@ class ALL4(Service):
                         name=data["brand"]["title"],
                         year=int(data["brand"]["summary"].split(" ")[0].strip().strip("()")),
                         language="en",
-                        data=movie["assetInfo"].get("streaming"),
+                        data=movie["assetInfo"].get("streaming") or movie["assetInfo"].get("download"),
                     )
                     for movie in data["brand"]["episodes"]
                 ]
@@ -227,7 +227,7 @@ class ALL4(Service):
                         number=episode["episodeNumber"],
                         name=episode["originalTitle"],
                         language="en",
-                        data=episode["assetInfo"].get("streaming"),
+                        data=episode["assetInfo"].get("streaming") or episode["assetInfo"].get("download"),
                     )
                     for episode in data["brand"]["episodes"]
                     if episode.get("assetInfo")
