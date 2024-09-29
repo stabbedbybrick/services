@@ -100,7 +100,7 @@ class ROKU(Service):
             self.log.error("This title is temporarily unavailable or expired")
             sys.exit(1)
 
-        if data["type"] == "movie":
+        if data["type"] in ["movie", "tvspecial"]:
             return Movies(
                 [
                     Movie(
