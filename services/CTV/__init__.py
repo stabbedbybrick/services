@@ -17,7 +17,7 @@ from devine.core.manifests import DASH
 from devine.core.search_result import SearchResult
 from devine.core.service import Service
 from devine.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
-from devine.core.tracks import Chapter, Subtitle, Tracks
+from devine.core.tracks import Chapter, Subtitle, Video, Audio, Tracks
 
 
 class CTV(Service):
@@ -193,21 +193,29 @@ class CTV(Service):
             )
 
     def get_tracks(self, title: Title_T) -> Tracks:
-        base = f"https://capi.9c9media.com/destinations/{title.data}/platforms/desktop"
+        content = "https://capi.9c9media.com/destinations/{}/platforms/desktop/contents/{}/contentPackages".format(
+            title.data, title.id
+        )
 
-        r = self.session.get(f"{base}/contents/{title.id}/contentPackages")
+        params = {
+            "$include": "[Desc,Constraints,EndCreditOffset,Breaks,Stacks.ManifestHost.mpd]",
+        }
+        r = self.session.get(content, params=params)
         r.raise_for_status()
 
         pkg_id = r.json()["Items"][0]["Id"]
-        base += "/playback/contents"
-
-        manifest = f"{base}/{title.id}/contentPackages/{pkg_id}/manifest.mpd?filter=25"
-        subtitle = f"{base}/{title.id}/contentPackages/{pkg_id}/manifest.vtt"
+        manifest = f"{content}/{pkg_id}/manifest.mpd"
+        subtitle = f"{content}/{pkg_id}/manifest.vtt"
 
         if self.authorization:
             self.session.headers.update({"authorization": self.authorization})
 
-        tracks = DASH.from_url(url=manifest, session=self.session).to_tracks(language=title.language)
+        tracks = Tracks()
+        for num in ["14", "3", "25", "fe&mca=true&mta=true"]:
+            version = DASH.from_url(url=f"{manifest}?filter={num}", session=self.session).to_tracks(language=title.language)
+            tracks.videos.extend(version.videos)
+            tracks.audio.extend(version.audio)
+            
         tracks.add(
             Subtitle(
                 id_=hashlib.md5(subtitle.encode()).hexdigest()[0:6],
