@@ -243,23 +243,9 @@ class ALL4(Service):
         tracks = DASH.from_url(self.manifest, self.session).to_tracks(title.language)
         tracks.videos[0].data = data
 
-        if subtitle is not None:
-            tracks.add(
-                Subtitle(
-                    id_=hashlib.md5(subtitle.encode()).hexdigest()[0:6],
-                    url=subtitle,
-                    codec=Subtitle.Codec.from_mime(subtitle[-3:]),
-                    language=title.language,
-                    is_original_lang=True,
-                    forced=False,
-                    sdh=True,
-                )
-            )
-
-        for track in tracks.audio:
-            role = track.data["dash"]["representation"].find("Role")
-            if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
-                track.descriptive = True
+        if subtitle is None:
+            self.log.warning("- Subtitles are either missing or empty")
+            tracks.subtitles = [track for track in tracks.subtitles if subtitle is not None]
 
         return tracks
 
