@@ -40,9 +40,7 @@ class CBC(Service):
 
     \b
     Notes:
-        - The CCExtrator implementation in Devine can't handle this service properly and might fail.
-          If it does fail, you'll need to remove/comment out the code block in 'devine/commands/dl.py', line 577-616
-          This will keep CCExtractor from being called at all.
+        - CCExtrator v0.94 will likely fail to extract subtitles. It's recommended to downgrade to v0.93.
         - Some audio tracks contain invalid data, causing warning messages from mkvmerge during muxing
           These can be ignored.
 
