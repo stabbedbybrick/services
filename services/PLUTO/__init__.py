@@ -173,7 +173,7 @@ class PLUTO(Service):
                         season=int(episode.get("season")),
                         number=int(episode.get("number")),
                         name=episode.get("name"),
-                        year=None,
+                        year=self.year(episode),
                         language="en",  # self.region,
                         data=episode,
                     )
@@ -194,10 +194,10 @@ class PLUTO(Service):
                     Movie(
                         id_=movie.get("_id"),
                         service=self.__class__,
-                        year=movie.get("slug", "").split("-")[-3],
                         name=movie.get("name"),
                         language="en",  # self.region,
                         data=movie,
+                        year=self.year(movie),
                     )
                     for movie in data
                 ]
@@ -280,3 +280,10 @@ class PLUTO(Service):
         )
 
         return any(ad in text for ad in ads)
+
+    @staticmethod
+    def year(data: dict) -> Optional[int]:
+        title_year = (int(match.group(1)) if (match := re.search(r"\((\d{4})\)", data.get("name", ""))) else None)
+        slug_year = (int(match.group(1)) if (match := re.search(r"\b(\d{4})\b", data.get("slug", ""))) else None)
+        return None if title_year else slug_year
+        
