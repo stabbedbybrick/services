@@ -203,7 +203,7 @@ class CBC(Service):
 
         chapters = []
         if extra.get("chapters"):
-            chapters = [Chapter(timestamp=x) for x in extra["chapters"].split(",")]
+            chapters = [Chapter(timestamp=x) for x in set(extra["chapters"].split(","))]
 
         if extra.get("credits"):
             chapters.append(Chapter(name="Credits", timestamp=float(extra["credits"])))
