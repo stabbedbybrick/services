@@ -132,10 +132,11 @@ class iP(Service):
         else:
             seasons = [self.get_data(pid, x["id"]) for x in data["slices"] or [{"id": None}]]
             episode_ids = [
-                episode["episode"].get("id")
+                episode.get("episode", {}).get("id")
                 for season in seasons
                 for episode in season["entities"]["results"]
-                if not episode["episode"].get("live")
+                if not episode.get("episode", {}).get("live")
+                and episode.get("episode", {}).get("id") is not None
             ]
             episodes = self.get_episodes(episode_ids)
             return Series(episodes)
