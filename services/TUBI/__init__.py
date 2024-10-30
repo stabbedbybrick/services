@@ -141,7 +141,7 @@ class TUBI(Service):
                         number=int(episode["episode_number"]),
                         name=episode["title"].split("-")[1],
                         year=data["year"],
-                        language=Language.find(episode.get("lang", "en")).to_alpha3(),
+                        language=Language.find(episode.get("lang") or "en").to_alpha3(),
                         data=episode,
                     )
                     for season in data["children"]
