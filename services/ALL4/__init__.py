@@ -243,9 +243,23 @@ class ALL4(Service):
         tracks = DASH.from_url(self.manifest, self.session).to_tracks(title.language)
         tracks.videos[0].data = data
 
-        if subtitle is None:
+        # manifest subtitles are sometimes empty even if they exist
+        # so we clear them and add the subtitles manually
+        tracks.subtitles.clear()
+        if subtitle is not None:
+            tracks.add(
+                Subtitle(
+                    id_=hashlib.md5(subtitle.encode()).hexdigest()[0:6],
+                    url=subtitle,
+                    codec=Subtitle.Codec.from_mime(subtitle[-3:]),
+                    language=title.language,
+                    is_original_lang=True,
+                    forced=False,
+                    sdh=False,
+                )
+            )
+        else:
             self.log.warning("- Subtitles are either missing or empty")
-            tracks.subtitles = [track for track in tracks.subtitles if subtitle is not None]
 
         return tracks
 
