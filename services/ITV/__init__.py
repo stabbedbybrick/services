@@ -238,22 +238,51 @@ class ITV(Service):
     def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
         playlist = title.data.get("playlistUrl")
 
-        featureset = {k: ("mpeg-dash", "widevine", "outband-webvtt", "hd", "single-track") for k in ("min", "max")}
+        headers = {
+            "Accept": "application/vnd.itv.vod.playlist.v4+json",
+            "Accept-Language": "en-US,en;q=0.9,da;q=0.8",
+            "Connection": "keep-alive",
+            "Content-Type": "application/json",
+        }
+
         payload = {
-            "client": {"id": "browser"},
-            "variantAvailability": {"featureset": featureset, "platformTag": "dotcom"},
+            "client": {
+                "id": "lg",
+            },
+            "device": {
+                "deviceGroup": "ctv",
+            },
+            "variantAvailability": {
+                "player": "dash",
+                "featureset": [
+                    "mpeg-dash",
+                    "widevine",
+                    "outband-webvtt",
+                    "hd",
+                    "single-track",
+                ],
+                "platformTag": "ctv",
+                "drm": {
+                    "system": "widevine",
+                    "maxSupported": "L3",
+                },
+            },
         }
         if self.authorization:
             payload["user"] = {"token": self.authorization}
 
-        r = self.session.post(playlist, json=payload)
+        r = self.session.post(playlist, headers=headers, json=payload)
+        if r.status_code != 200:
+            raise ConnectionError(r.text)
+
+        r = self.session.post(playlist, headers=headers, json=payload)
         if r.status_code != 200:
             raise ConnectionError(r.text)
 
         data = r.json()
         video = data["Playlist"]["Video"]
         subtitles = video.get("Subtitles")
-        self.manifest = video.get("Base") + video["MediaFiles"][0].get("Href")
+        self.manifest = video["MediaFiles"][0].get("Href")
         self.license = video["MediaFiles"][0].get("KeyServiceUrl")
 
         tracks = DASH.from_url(self.manifest, self.session).to_tracks(title.language)
