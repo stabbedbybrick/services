@@ -164,11 +164,10 @@ class ITV(Service):
 
         # Some shows are not listed as "SERIES" or "FILM", only as "Latest episodes"
         if not kind and next(
-            (x for x in data.get("seriesList") if x.get("seriesLabel").lower() == "latest episodes"), None
+            (x for x in data.get("seriesList") if x.get("seriesLabel").lower() in ("latest episodes", "other episodes")), None
         ):
             titles = data["seriesList"][0]["titles"]
-            return Series(
-                [
+            episodes =[
                     Episode(
                         id_=episode["episodeId"],
                         service=self.__class__,
@@ -181,7 +180,13 @@ class ITV(Service):
                     )
                     for episode in titles
                 ]
-            )
+            # Assign episode numbers to special seasons
+            counter = 1
+            for episode in episodes:
+                if episode.season == 0 and episode.number == 0:
+                    episode.number = counter
+                    counter += 1
+            return Series(episodes)
 
         if kind == "SERIES" and data.get("episode"):
             episode = data.get("episode")
