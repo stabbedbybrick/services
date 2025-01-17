@@ -26,6 +26,7 @@ class CBS(Service):
     Credit to @srpen6 for the tip on anonymous session
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: None
     Robustness:

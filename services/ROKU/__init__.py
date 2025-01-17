@@ -24,6 +24,7 @@ class ROKU(Service):
     Service code for The Roku Channel (https://therokuchannel.roku.com)
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: Cookies (optional)
     Robustness:

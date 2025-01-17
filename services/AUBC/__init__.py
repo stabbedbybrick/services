@@ -24,6 +24,7 @@ class AUBC(Service):
     Service code for ABC iView streaming service (https://iview.abc.net.au/).
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: None
     Robustness:

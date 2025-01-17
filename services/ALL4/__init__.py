@@ -29,6 +29,7 @@ class ALL4(Service):
     Service code for Channel 4's All4 streaming service (https://channel4.com).
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: Credentials
     Robustness:

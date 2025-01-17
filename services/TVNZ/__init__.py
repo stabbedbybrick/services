@@ -26,6 +26,7 @@ class TVNZ(Service):
     Service code for TVNZ streaming service (https://www.tvnz.co.nz).
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: Credentials
     Robustness:

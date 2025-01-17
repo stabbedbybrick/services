@@ -26,6 +26,7 @@ class CBC(Service):
     Service code for CBC Gem streaming service (https://gem.cbc.ca/).
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: Credentials
     Robustness:

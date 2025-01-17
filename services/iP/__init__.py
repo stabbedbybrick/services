@@ -30,6 +30,7 @@ class iP(Service):
     Base code from VT, credit to original author
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: None
     Security: None

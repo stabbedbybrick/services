@@ -25,6 +25,7 @@ class CTV(Service):
     Service code for CTV.ca (https://www.ctv.ca)
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: Credentials for subscription, none for freely available titles
     Robustness:

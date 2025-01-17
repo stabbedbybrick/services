@@ -20,6 +20,7 @@ class UKTV(Service):
     Service code for 'U' (formerly UKTV Play) streaming service (https://u.co.uk/).
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: None
     Robustness:

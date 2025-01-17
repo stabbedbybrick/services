@@ -26,6 +26,7 @@ class DSCP(Service):
     Service code for Discovery Plus (https://discoveryplus.com).
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: Cookies
     Robustness:

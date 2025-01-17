@@ -21,6 +21,7 @@ class STV(Service):
     Service code for STV Player streaming service (https://player.stv.tv/).
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: None
     Robustness:

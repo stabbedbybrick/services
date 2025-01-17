@@ -26,6 +26,7 @@ class MY5(Service):
     Service code for Channel 5's My5 streaming service (https://channel5.com).
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: None
     Robustness:

@@ -24,6 +24,7 @@ class TUBI(Service):
     Service code for TubiTV streaming service (https://tubitv.com/)
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: Cookies
     Robustness:

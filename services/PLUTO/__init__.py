@@ -23,6 +23,7 @@ class PLUTO(Service):
     Credit to @wks_uwu for providing an alternative API, making the codebase much cleaner
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: None
     Robustness:

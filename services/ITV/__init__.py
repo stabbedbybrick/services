@@ -24,11 +24,11 @@ class ITV(Service):
     Service code for ITVx streaming service (https://www.itv.com/).
 
     \b
+    Version: 1.0.0
     Author: stabbedbybrick
     Authorization: Cookies (Optional for free content | Required for premium content)
     Robustness:
-      L1: 1080p
-      L3: 720p
+      L3: 1080p
 
     \b
     Tips:
