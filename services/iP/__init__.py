@@ -79,22 +79,20 @@ class iP(Service):
             self.vcodec = "H.265"
 
     def search(self) -> Generator[SearchResult, None, None]:
-        params = {
-            "q": self.title,
-            "apikey": self.config["api_key"],
-        }
-
-        r = self.session.get(self.config["endpoints"]["search"], params=params)
+        r = self.session.get(self.config["endpoints"]["search"], params={"q": self.title})
         r.raise_for_status()
 
         results = r.json()
-        for result in results["results"]:
+        for result in results["new_search"]["results"]:
+            programme_type = result.get("type")
+            category = result.get("labels", {}).get("category", "")
+            path = "episode" if programme_type == "episode" else "episodes"
             yield SearchResult(
-                id_=result.get("uri").split(":")[-1],
+                id_=result.get("id"),
                 title=result.get("title"),
-                description=result.get("synopsis"),
-                label="series" if result.get("type", "") == "brand" else result.get("type"),
-                url=result.get("url"),
+                description=result.get("synopses", {}).get("small"),
+                label=programme_type + " - " + category,
+                url=f"https://www.bbc.co.uk/iplayer/{path}/{result.get('id')}",
             )
 
     def get_titles(self) -> Union[Movies, Series]:

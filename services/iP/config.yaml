@@ -8,4 +8,4 @@ endpoints:
   playlist: https://www.bbc.co.uk/programmes/{pid}/playlist.json
   open: https://{}/mediaselector/6/select/version/2.0/mediaset/{}/vpid/{}/
   secure: https://{}/mediaselector/6/select/version/2.0/vpid/{}/format/json/mediaset/{}/proto/https
-  search: https://search.api.bbci.co.uk/formula/iplayer-ibl-root
+  search: https://ibl.api.bbc.co.uk/ibl/v1/new-search
