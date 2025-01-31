@@ -24,9 +24,9 @@ class ROKU(Service):
     Service code for The Roku Channel (https://therokuchannel.roku.com)
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
-    Authorization: Cookies (optional)
+    Authorization: Cookies
     Robustness:
       Widevine:
         L3: 1080p, DD5.1
@@ -110,7 +110,7 @@ class ROKU(Service):
                         name=data["title"],
                         year=data["releaseYear"],
                         language=data["viewOptions"][0]["media"].get("originalAudioLanguage", "en"),
-                        data=None,
+                        data=data,
                     )
                 ]
             )
@@ -128,7 +128,7 @@ class ROKU(Service):
                         name=episode["title"],
                         year=data["releaseYear"],
                         language=episode["viewOptions"][0]["media"].get("originalAudioLanguage", "en"),
-                        data=None,
+                        data=data,
                     )
                     for episode in episodes
                 ]
@@ -146,7 +146,7 @@ class ROKU(Service):
                         name=data["title"],
                         year=data["releaseYear"],
                         language=data["viewOptions"][0]["media"].get("originalAudioLanguage", "en"),
-                        data=None,
+                        data=data,
                     )
                 ]
             )
@@ -154,15 +154,27 @@ class ROKU(Service):
     def get_tracks(self, title: Title_T) -> Tracks:
         token = self.session.get(self.config["endpoints"]["token"]).json()["csrf"]
 
+        options = title.data["viewOptions"]
+        subscription = options[0].get("license", "").lower()
+        authenticated = next((x for x in options if x.get("isAuthenticated")), None)
+
+        if subscription == "subscription" and not authenticated:
+            self.log.error("This title is only available to subscribers")
+            sys.exit(1)
+
+        play_id = authenticated.get("playId") if authenticated else options[0].get("playId")
+        provider_id = authenticated.get("providerId") if authenticated else options[0].get("providerId")
+
         headers = {
             "csrf-token": token,
         }
         payload = {
             "rokuId": title.id,
+            "playId": play_id,
             "mediaFormat": "mpeg-dash",
             "drmType": "widevine",
             "quality": "fhd",
-            "providerId": "rokuavod",
+            "providerId": provider_id,
         }
 
         r = self.session.post(
