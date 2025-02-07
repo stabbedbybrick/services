@@ -1,21 +1,20 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import sys
+import uuid
 from collections.abc import Generator
-from http.cookiejar import CookieJar
-from typing import Any, Optional
-from urllib.parse import urljoin
+from typing import Any
 
 import click
-import m3u8
-from devine.core.credential import Credential
-from devine.core.downloaders import requests
-from devine.core.manifests import HLS
+from devine.core.downloaders import aria2c, requests
+from devine.core.manifests import DASH
 from devine.core.search_result import SearchResult
 from devine.core.service import Service
 from devine.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
-from devine.core.tracks import Chapter, Subtitle, Track, Tracks
+from devine.core.tracks import Chapter, Chapters, Subtitle, Track, Tracks
 from langcodes import Language
 
 
@@ -24,9 +23,9 @@ class TUBI(Service):
     Service code for TubiTV streaming service (https://tubitv.com/)
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
-    Authorization: Cookies
+    Authorization: None
     Robustness:
       Widevine:
         L3: 720p, AAC2.0
@@ -37,10 +36,15 @@ class TUBI(Service):
             /series/300001423/gotham
             /tv-shows/200024793/s01-e01-pilot
             /movies/589279/the-outsiders
+
+    \b
+    Notes:
+        - Due to the structure of the DASH manifest and requests downloader failing to output progress,
+          aria2c is used as the downloader no matter what downloader is specified in the config.
+        - Search is currently disabled.
     """
 
     TITLE_RE = r"^(?:https?://(?:www\.)?tubitv\.com?)?/(?P<type>movies|series|tv-shows)/(?P<id>[a-z0-9-]+)"
-    GEOFENCE = ("us", "ca",)
 
     @staticmethod
     @click.command(name="TUBI", short_help="https://tubitv.com/", help=__doc__)
@@ -53,48 +57,40 @@ class TUBI(Service):
         self.title = title
         super().__init__(ctx)
 
-        self.license = None
+    # Disable search for now
+    # def search(self) -> Generator[SearchResult, None, None]:
+    #     params = {
+    #         "search": self.title,
+    #         "include_linear": "true",
+    #         "include_channels": "false",
+    #         "is_kids_mode": "false",
+    #     }
 
-    def authenticate(
-        self,
-        cookies: Optional[CookieJar] = None,
-        credential: Optional[Credential] = None,
-    ) -> None:
-        super().authenticate(cookies, credential)
-        if not cookies:
-            raise EnvironmentError("Service requires Cookies for Authentication.")
-        
-        self.session.cookies.update(cookies)
+    #     r = self.session.get(self.config["endpoints"]["search"], params=params)
+    #     r.raise_for_status()
+    #     results = r.json()
+    #     from devine.core.console import console
+    #     console.print(results)
+    #     exit()
 
-    def search(self) -> Generator[SearchResult, None, None]:
-        params = {
-            "isKidsMode": "false",
-            "useLinearHeader": "true",
-            "isMobile": "false",
-        }
-
-        r = self.session.get(self.config["endpoints"]["search"].format(query=self.title), params=params)
-        r.raise_for_status()
-        results = r.json()
-
-        for result in results:
-            label = "series" if result["type"] == "s" else "movies" if result["type"] == "v" else result["type"]
-            title = (
-                result.get("title", "")
-                .lower()
-                .replace(" ", "-")
-                .replace(":", "")
-                .replace("(", "")
-                .replace(")", "")
-                .replace(".", "")
-            )
-            yield SearchResult(
-                id_=f"https://tubitv.com/{label}/{result.get('id')}/{title}",
-                title=result.get("title"),
-                description=result.get("description"),
-                label=label,
-                url=f"https://tubitv.com/{label}/{result.get('id')}/{title}",
-            )
+    #     for result in results:
+    #         label = "series" if result["type"] == "s" else "movies" if result["type"] == "v" else result["type"]
+    #         title = (
+    #             result.get("title", "")
+    #             .lower()
+    #             .replace(" ", "-")
+    #             .replace(":", "")
+    #             .replace("(", "")
+    #             .replace(")", "")
+    #             .replace(".", "")
+    #         )
+    #         yield SearchResult(
+    #             id_=f"https://tubitv.com/{label}/{result.get('id')}/{title}",
+    #             title=result.get("title"),
+    #             description=result.get("description"),
+    #             label=label,
+    #             url=f"https://tubitv.com/{label}/{result.get('id')}/{title}",
+    #         )
 
     def get_titles(self) -> Titles_T:
         try:
@@ -102,11 +98,22 @@ class TUBI(Service):
         except Exception:
             raise ValueError("Could not parse ID from title - is the URL correct?")
 
+        params = {
+            "platform": "android",
+            "content_id": content_id,
+            "device_id": str(uuid.uuid4()),
+            "video_resources[]": [
+                "dash",
+                "dash_widevine",
+            ],
+        }
+
         if kind == "tv-shows":
-            content = self.session.get(self.config["endpoints"]["content"].format(content_id=content_id))
+            content = self.session.get(self.config["endpoints"]["content"], params=params)
             content.raise_for_status()
             series_id = "0" + content.json().get("series_id")
-            data = self.session.get(self.config["endpoints"]["content"].format(content_id=series_id)).json()
+            params.update({"content_id": int(series_id)})
+            data = self.session.get(self.config["endpoints"]["content"], params=params).json()
 
             return Series(
                 [
@@ -114,10 +121,10 @@ class TUBI(Service):
                         id_=episode["id"],
                         service=self.__class__,
                         title=data["title"],
-                        season=int(season["id"]),
-                        number=int(episode["episode_number"]),
+                        season=int(season.get("id", 0)),
+                        number=int(episode.get("episode_number", 0)),
                         name=episode["title"].split("-")[1],
-                        year=data["year"],
+                        year=data.get("year"),
                         language=Language.find(episode.get("lang", "en")).to_alpha3(),
                         data=episode,
                     )
@@ -128,7 +135,7 @@ class TUBI(Service):
             )
 
         if kind == "series":
-            r = self.session.get(self.config["endpoints"]["content"].format(content_id=content_id))
+            r = self.session.get(self.config["endpoints"]["content"], params=params)
             r.raise_for_status()
             data = r.json()
 
@@ -138,10 +145,10 @@ class TUBI(Service):
                         id_=episode["id"],
                         service=self.__class__,
                         title=data["title"],
-                        season=int(season["id"]),
-                        number=int(episode["episode_number"]),
+                        season=int(season.get("id", 0)),
+                        number=int(episode.get("episode_number", 0)),
                         name=episode["title"].split("-")[1],
-                        year=data["year"],
+                        year=data.get("year"),
                         language=Language.find(episode.get("lang") or "en").to_alpha3(),
                         data=episode,
                     )
@@ -151,7 +158,7 @@ class TUBI(Service):
             )
 
         if kind == "movies":
-            r = self.session.get(self.config["endpoints"]["content"].format(content_id=content_id))
+            r = self.session.get(self.config["endpoints"]["content"], params=params)
             r.raise_for_status()
             data = r.json()
             return Movies(
@@ -159,7 +166,7 @@ class TUBI(Service):
                     Movie(
                         id_=data["id"],
                         service=self.__class__,
-                        year=data["year"],
+                        year=data.get("year"),
                         name=data["title"],
                         language=Language.find(data.get("lang", "en")).to_alpha3(),
                         data=data,
@@ -169,16 +176,27 @@ class TUBI(Service):
 
     def get_tracks(self, title: Title_T) -> Tracks:
         if not title.data.get("video_resources"):
-            raise ValueError("No video resources found. Title is either missing or geolocation is incorrect.")
+            self.log.error(" - Failed to obtain video resources. Check geography settings.")
+            self.log.info(f"Title is available in: {title.data.get('country')}")
+            sys.exit(1)
 
         self.manifest = title.data["video_resources"][0]["manifest"]["url"]
         self.license = title.data["video_resources"][0].get("license_server", {}).get("url")
 
-        tracks = HLS.from_url(url=self.manifest, session=self.session).to_tracks(language=title.language)
+        tracks = DASH.from_url(url=self.manifest, session=self.session).to_tracks(language=title.language)
         for track in tracks:
-            master = m3u8.loads(self.session.get(track.url).text, uri=track.url)
-            track.url = urljoin(master.base_uri, master.segments[0].uri)
-            track.descriptor = Track.Descriptor.URL
+            rep_base = track.data["dash"]["representation"].find("BaseURL")
+            if rep_base is not None:
+                base_url = os.path.dirname(track.url)
+                track_base = rep_base.text
+                track.url = f"{base_url}/{track_base}"
+                track.descriptor = Track.Descriptor.URL
+                track.downloader = aria2c
+
+        for track in tracks.audio:
+            role = track.data["dash"]["adaptation_set"].find("Role")
+            if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
+                track.descriptive = True
 
         if title.data.get("subtitles"):
             tracks.add(
@@ -195,8 +213,17 @@ class TUBI(Service):
             )
         return tracks
 
-    def get_chapters(self, title: Title_T) -> list[Chapter]:
-        return []
+    def get_chapters(self, title: Title_T) -> Chapters:
+        cue_points = title.data.get("credit_cuepoints")
+        if not cue_points:
+            return Chapters()
+        
+        chapters = []
+        for title, cuepoint in cue_points.items():
+            if cuepoint > 0:
+                chapters.append(Chapter(timestamp=float(cuepoint), name=title))
+
+        return Chapters(chapters)
 
     def get_widevine_service_certificate(self, **_: Any) -> str:
         return None
