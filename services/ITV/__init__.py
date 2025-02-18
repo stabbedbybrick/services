@@ -24,7 +24,7 @@ class ITV(Service):
     Service code for ITVx streaming service (https://www.itv.com/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: Cookies (Optional for free content | Required for premium content)
     Robustness:
@@ -275,10 +275,6 @@ class ITV(Service):
         }
         if self.authorization:
             payload["user"] = {"token": self.authorization}
-
-        r = self.session.post(playlist, headers=headers, json=payload)
-        if r.status_code != 200:
-            raise ConnectionError(r.text)
 
         r = self.session.post(playlist, headers=headers, json=payload)
         if r.status_code != 200:
