@@ -24,7 +24,7 @@ class AUBC(Service):
     Service code for ABC iView streaming service (https://iview.abc.net.au/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -117,8 +117,19 @@ class AUBC(Service):
 
         streams = next(x["streams"]["mpegdash"] for x in playlist if x["type"] == "program")
         captions = next((x.get("captions") for x in playlist if x["type"] == "program"), None)
-        manifest = streams["720"].replace("720", "1080") if streams.get("720") else streams["sd"]
-        title.data["protected"] = True if streams.get("protected") else False
+        title.data["protected"] = streams.get("protected", False)
+
+        if "720" in streams:
+            streams["1080"] = streams["720"].replace("720", "1080")
+
+        manifest = next(
+            (url for key in ["1080", "720", "sd", "sd-low"] if key in streams
+            for url in [streams[key]] 
+            if self.session.head(url).status_code == 200),
+            None
+        )
+        if not manifest:
+            raise ValueError("Could not find a manifest for this title")
 
         tracks = DASH.from_url(manifest, self.session).to_tracks(title.language)
 
@@ -221,23 +232,10 @@ class AUBC(Service):
             language=language,
         )
 
-    def _request(
-        self,
-        method: str,
-        api: str,
-        params: dict = None,
-        headers: dict = None,
-        data: dict = None,
-        payload: dict = None,
-    ) -> Any[dict | str]:
+    def _request(self, method: str, api: str, **kwargs: Any) -> Any[dict | str]:
         url = urljoin(self.config["endpoints"]["base_url"], api)
 
-        if params:
-            self.session.params.update(params)
-        if headers:
-            self.session.headers.update(headers)
-
-        prep = self.session.prepare_request(Request(method, url, data=data, json=payload))
+        prep = self.session.prepare_request(Request(method, url, **kwargs))
 
         response = self.session.send(prep)
         if response.status_code != 200:
