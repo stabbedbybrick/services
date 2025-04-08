@@ -23,12 +23,12 @@ class PLUTO(Service):
     Credit to @wks_uwu for providing an alternative API, making the codebase much cleaner
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Robustness:
       Widevine:
-        L3: 720p, AAC2.0
+        L3: 1080p, AAC2.0
 
     \b
     Tips:
@@ -37,11 +37,14 @@ class PLUTO(Service):
            EPISODE: /series/65ce4e5003fa740013793127/season/1/episode/662c2af0a9f2d200131ba731
            MOVIE: /movies/635c1e430888bc001ad01a9b/details
         - Use --lang LANG_RANGE option to request non-English tracks
+        - Use --hls to request HLS instead of DASH:
+           devine dl pluto URL --hls
 
     \b
     Notes:
-        - Both DASH(widevine) and HLS(AES) are looked for in the API
-        - HLS is prioritized over DASH, because the DASH version will sometimes have sync issues
+        - Both DASH(widevine) and HLS(AES) are looked for in the API.
+        - DASH is prioritized over HLS since the latter doesn't have 1080p. If DASH has audio/subtitle issues,
+          you can try using HLS with the --hls flag.
         - Pluto use transport streams for HLS, meaning the video and audio are a part of the same stream
           As a result, only videos are listed as tracks. But the audio will be included as well.
         - With the variations in manifests, and the inconsistency in the API, the language is set as "en" by default
@@ -62,14 +65,16 @@ class PLUTO(Service):
 
     @staticmethod
     @click.command(name="PLUTO", short_help="https://pluto.tv/", help=__doc__)
+    @click.option("--hls", is_flag=True, help="Request HLS instead of DASH")
     @click.argument("title", type=str)
     @click.pass_context
     def cli(ctx, **kwargs):
         return PLUTO(ctx, **kwargs)
 
-    def __init__(self, ctx, title):
-        self.title = title
+    def __init__(self, ctx, title, hls=False):
         super().__init__(ctx)
+        self.title = title
+        self.force_hls = hls
 
     def authenticate(
         self,
@@ -216,17 +221,7 @@ class PLUTO(Service):
         hls = next((x.get("file") for x in sources if x.get("type").lower() == "hls"), None)
         dash = next((x.get("file") for x in sources if x.get("type").lower() == "dash"), None)
 
-        if hls:
-            self.license = None
-            m3u8_url = hls.replace("https://siloh.pluto.tv", "http://silo-hybrik.pluto.tv.s3.amazonaws.com")
-            manifest = self.clean_manifest(self.session.get(m3u8_url).text)
-            tracks = HLS.from_text(manifest, m3u8_url).to_tracks(language=title.language)
-
-            # Remove separate AD audio tracks
-            for track in tracks.audio:
-                tracks.audio.remove(track)
-
-        else:
+        if dash and not self.force_hls:
             self.license = self.config["endpoints"]["license"]
             manifest = dash.replace("https://siloh.pluto.tv", "http://silo-hybrik.pluto.tv.s3.amazonaws.com")
             tracks = DASH.from_url(manifest, self.session).to_tracks(language=title.language)
@@ -235,6 +230,16 @@ class PLUTO(Service):
                 role = track.data["dash"]["adaptation_set"].find("Role")
                 if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
                     track.descriptive = True
+
+        else:
+            self.license = None
+            m3u8_url = hls.replace("https://siloh.pluto.tv", "http://silo-hybrik.pluto.tv.s3.amazonaws.com")
+            manifest = self.clean_manifest(self.session.get(m3u8_url).text)
+            tracks = HLS.from_text(manifest, m3u8_url).to_tracks(language=title.language)
+
+            # Remove separate AD audio tracks
+            for track in tracks.audio:
+                tracks.audio.remove(track)
 
         return tracks
 
