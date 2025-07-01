@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
-import sys
+import tempfile
 import warnings
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, Union
 
 import click
@@ -16,7 +18,7 @@ from devine.core.manifests import DASH, HLS
 from devine.core.search_result import SearchResult
 from devine.core.service import Service
 from devine.core.titles import Episode, Movie, Movies, Series
-from devine.core.tracks import Audio, Chapter, Subtitle, Tracks, Video
+from devine.core.tracks import Audio, Chapters, Subtitle, Tracks, Video
 from devine.core.utils.collections import as_list
 from devine.core.utils.sslciphers import SSLCiphers
 
@@ -27,10 +29,9 @@ class iP(Service):
     """
     \b
     Service code for the BBC iPlayer streaming service (https://www.bbc.co.uk/iplayer).
-    Base code from VT, credit to original author
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Security: None
@@ -40,13 +41,6 @@ class iP(Service):
         - Use full title URL as input for best results.
         - Use --list-titles before anything, iPlayer's listings are often messed up.
     \b
-        - An SSL certificate (PEM) is required for accessing the UHD endpoint.
-        Specify its path using the service configuration data in the root config:
-    \b
-            services:
-                iP:
-                    cert: path/to/cert
-    \b
         - Use --range HLG to request H.265 UHD tracks
         - See which titles are available in UHD:
             https://www.bbc.co.uk/iplayer/help/questions/programme-availability/uhd-content
@@ -55,27 +49,26 @@ class iP(Service):
     ALIASES = ("bbciplayer", "bbc", "iplayer")
     GEOFENCE = ("gb",)
     TITLE_RE = r"^(?:https?://(?:www\.)?bbc\.co\.uk/(?:iplayer/(?P<kind>episode|episodes)/|programmes/))?(?P<id>[a-z0-9]+)(?:/.*)?$"
-
+  
     @staticmethod
     @click.command(name="iP", short_help="https://www.bbc.co.uk/iplayer", help=__doc__)
     @click.argument("title", type=str)
     @click.pass_context
-    def cli(ctx: Context, **kwargs: Any) -> iP:
+    def cli(ctx: Context, **kwargs: Any) -> "iP":
         return iP(ctx, **kwargs)
 
     def __init__(self, ctx: Context, title: str):
-        self.title = title
         super().__init__(ctx)
+        self.title = title
         self.vcodec = ctx.parent.params.get("vcodec")
         self.range = ctx.parent.params.get("range_")
 
         self.session.headers.update({"user-agent": "BBCiPlayer/5.17.2.32046"})
 
-        if self.range and self.range[0].name == "HLG" and not self.config.get("cert"):
-            self.log.error("HLG tracks cannot be requested without an SSL certificate")
-            sys.exit(1)
+        if self.range and self.range[0].name == "HLG":
+            if not self.config.get("certificate"):
+                raise CertificateMissingError("HLG/H.265 tracks cannot be requested without a TLS certificate.")
 
-        elif self.range and self.range[0].name == "HLG":
             self.session.headers.update({"user-agent": self.config["user_agent"]})
             self.vcodec = "H.265"
 
@@ -83,128 +76,189 @@ class iP(Service):
         r = self.session.get(self.config["endpoints"]["search"], params={"q": self.title})
         r.raise_for_status()
 
-        results = r.json()
-        for result in results["new_search"]["results"]:
-            programme_type = result.get("type")
+        results = r.json().get("new_search", {}).get("results", [])
+        for result in results:
+            programme_type = result.get("type", "unknown")
             category = result.get("labels", {}).get("category", "")
             path = "episode" if programme_type == "episode" else "episodes"
             yield SearchResult(
                 id_=result.get("id"),
                 title=result.get("title"),
                 description=result.get("synopses", {}).get("small"),
-                label=programme_type + " - " + category,
+                label=f"{programme_type} - {category}",
                 url=f"https://www.bbc.co.uk/iplayer/{path}/{result.get('id')}",
             )
 
     def get_titles(self) -> Union[Movies, Series]:
-        try:
-            kind, pid = (re.match(self.TITLE_RE, self.title).group(i) for i in ("kind", "id"))
-        except Exception:
-            raise ValueError("Could not parse ID from title - is the URL correct?")
+        match = re.match(self.TITLE_RE, self.title)
+        if not match:
+            raise ValueError("Could not parse ID from title - is the URL/ID format correct?")
 
+        groups = match.groupdict()
+        pid = groups.get("id")
+        kind = groups.get("kind")
+
+        # Attempt to get brand/series data first
         data = self.get_data(pid, slice_id=None)
+
+        # Handle case where the input is a direct episode URL and get_data fails
         if data is None and kind == "episode":
             return Series([self.fetch_episode(pid)])
 
-        elif data is None:
-            raise ValueError(f"Metadata was not found - if {pid} is an episode, use full URL as input")
+        if data is None:
+            raise MetadataError(f"Metadata not found for '{pid}'. If it's an episode, use the full URL.")
 
+        # If it's a "series" with only one item, it might be a movie.
         if data.get("count", 0) < 2:
-            data = self.session.get(self.config["endpoints"]["episodes"].format(pid=pid)).json()
-            if not data.get("episodes"):
-                raise ValueError(f"Metadata was not found for {pid}")
+            r = self.session.get(self.config["endpoints"]["episodes"].format(pid=pid))
+            r.raise_for_status()
+            episodes_data = r.json()
+            if not episodes_data.get("episodes"):
+                raise MetadataError(f"Episode metadata not found for '{pid}'.")
 
-            movie = data.get("episodes")[0]
-
+            movie_data = episodes_data["episodes"][0]
             return Movies(
                 [
                     Movie(
-                        id_=movie.get("id"),
-                        name=movie.get("title"),
-                        year=movie.get("release_date_time", "").split("-")[0],
+                        id_=movie_data.get("id"),
+                        name=movie_data.get("title"),
+                        year=(movie_data.get("release_date_time", "") or "").split("-")[0],
                         service=self.__class__,
                         language="en",
                         data=data,
                     )
                 ]
             )
-        else:
-            seasons = [self.get_data(pid, x["id"]) for x in data["slices"] or [{"id": None}]]
-            episode_ids = [
-                episode.get("episode", {}).get("id")
-                for season in seasons
-                for episode in season["entities"]["results"]
-                if not episode.get("episode", {}).get("live")
-                and episode.get("episode", {}).get("id") is not None
-            ]
-            episodes = self.get_episodes(episode_ids)
-            return Series(episodes)
+
+        # It's a full series
+        seasons = [self.get_data(pid, x["id"]) for x in data.get("slices") or [{"id": None}]]
+        episode_ids = [
+            episode.get("episode", {}).get("id")
+            for season in seasons
+            for episode in season.get("entities", {}).get("results", [])
+            if not episode.get("episode", {}).get("live")
+            and episode.get("episode", {}).get("id")
+        ]
+
+        episodes = self.get_episodes(episode_ids)
+        return Series(episodes)
 
     def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
-        r = self.session.get(url=self.config["endpoints"]["playlist"].format(pid=title.id))
+        versions = self._get_available_versions(title.id)
+        if not versions:
+            raise NoStreamsAvailableError("No available versions for this title were found.")
+
+        connections = [self.check_all_versions(version["pid"]) for version in versions]
+        connections = [c for c in connections if c]
+        if not connections:
+            if self.vcodec == "H.265":
+                raise NoStreamsAvailableError("Selection unavailable in UHD.")
+            raise NoStreamsAvailableError("Selection unavailable. Title may be missing or geo-blocked.")
+
+        media = self._select_best_media(connections)
+        if not media:
+            raise NoStreamsAvailableError("Could not find a suitable media stream.")
+
+        tracks = self._select_tracks(media, title.language)
+
+        return tracks
+
+    def get_chapters(self, title: Union[Movie, Episode]) -> Chapters:
+        return Chapters()
+
+    def _get_available_versions(self, pid: str) -> list[dict]:
+        """Fetch all available versions for a programme ID."""
+        r = self.session.get(url=self.config["endpoints"]["playlist"].format(pid=pid))
         r.raise_for_status()
         playlist = r.json()
 
         versions = playlist.get("allAvailableVersions")
-        if not versions:
-            # If API returns no versions, try to fetch from site source code
-            r = self.session.get(self.config["base_url"].format(type="episode", pid=title.id))
-            redux = re.search("window.__IPLAYER_REDUX_STATE__ = (.*?);</script>", r.text).group(1)
-            data = json.loads(redux)
-            versions = [{"pid": x.get("id") for x in data.get("versions", {}) if not x.get("kind") == "audio-described"}]
+        if versions:
+            return versions
 
-        if self.vcodec == "H.265":
-            versions = [{"pid": playlist.get("defaultAvailableVersion", {}).get("pid")}]
+        # Fallback to scraping webpage if API returns no versions
+        self.log.info("No versions in playlist API, falling back to webpage scrape.")
+        r = self.session.get(self.config["base_url"].format(type="episode", pid=pid))
+        r.raise_for_status()
+        match = re.search(r"window\.__IPLAYER_REDUX_STATE__\s*=\s*(.*?);\s*</script>", r.text)
+        if match:
+            redux_data = json.loads(match.group(1))
+            # Filter out audio-described versions
+            return [
+                {"pid": v.get("id")}
+                for v in redux_data.get("versions", {}).values()
+                if v.get("kind") != "audio-described" and v.get("id")
+            ]
 
-        if not versions:
-            self.log.error(" - No available versions for this title was found")
-            sys.exit(1)
+        return []
 
-        connections = [self.check_all_versions(version) for version in (x.get("pid") for x in versions)]
-        quality = [connection.get("height") for i in connections for connection in i if connection.get("height")]
-        max_quality = max((h for h in quality if h < "1080"), default=None)
-
-        media = next(
-            (i for i in connections if any(connection.get("height") == max_quality for connection in i)),
-            None,
+    def _select_best_media(self, connections: list[list[dict]]) -> list[dict]:
+        """Selects the media group corresponding to the highest available video quality."""
+        heights = sorted(
+            {
+                int(c["height"])
+                for media_list in connections
+                for c in media_list
+                if c.get("height", "").isdigit()
+            },
+            reverse=True,
         )
 
-        if not media:
-            self.log.error(" - Selection unavailable. Title doesn't exist or your IP address is blocked")
-            sys.exit(1)
+        if not heights:
+            self.log.warning("No video streams with height information were found.")
+            # Fallback: return the first available media group if any exist.
+            return connections[0] if connections else None
 
-        connection = {}
-        for video in [x for x in media if x["kind"] == "video"]:
-            connections = sorted(video["connection"], key=lambda x: x["priority"])
+        highest_height = heights[0]
+        self.log.debug(f"Available resolutions (p): {heights}. Selecting highest: {highest_height}p.")
+
+        best_media_list = next(
+            (
+                media_list
+                for media_list in connections
+                if any(conn.get("height") == str(highest_height) for conn in media_list)
+            ),
+            None,  # Default to None if no matching group is found (should be impossible if heights is not empty)
+        )
+
+        return best_media_list
+
+    def _select_tracks(self, media: list[dict], lang: str):
+        for video_stream_info in (m for m in media if m.get("kind") == "video"):
+            connections = sorted(video_stream_info["connection"], key=lambda x: x.get("priority", 99))
+
             if self.vcodec == "H.265":
                 connection = connections[0]
             else:
-                connection = next(
-                    x for x in connections if x["supplier"] == "mf_akamai" and x["transferFormat"] == "dash"
-                )
+                connection = next((c for c in connections if c["supplier"] == "mf_akamai" and c["transferFormat"] == "dash"), None)
 
             break
 
         if not self.vcodec == "H.265":
             if connection["transferFormat"] == "dash":
                 connection["href"] = "/".join(
-                    connection["href"].replace("dash", "hls").split("?")[0].split("/")[0:-1] + ["hls", "master.m3u8"]
+                    connection["href"]
+                    .replace("dash", "hls")
+                    .split("?")[0]
+                    .split("/")[0:-1]
+                    + ["hls", "master.m3u8"]
                 )
                 connection["transferFormat"] = "hls"
             elif connection["transferFormat"] == "hls":
                 connection["href"] = "/".join(
-                    connection["href"].replace(".hlsv2.ism", "").split("?")[0].split("/")[0:-1] + ["hls", "master.m3u8"]
+                    connection["href"]
+                    .replace(".hlsv2.ism", "")
+                    .split("?")[0]
+                    .split("/")[0:-1]
+                    + ["hls", "master.m3u8"]
                 )
 
-            if connection["transferFormat"] != "hls":
-                raise ValueError(f"Unsupported video media transfer format {connection['transferFormat']!r}")
-
         if connection["transferFormat"] == "dash":
-            tracks = DASH.from_url(url=connection["href"], session=self.session).to_tracks(language=title.language)
+            tracks = DASH.from_url(url=connection["href"], session=self.session).to_tracks(language=lang)
         elif connection["transferFormat"] == "hls":
-            tracks = HLS.from_url(url=connection["href"], session=self.session).to_tracks(language=title.language)
+            tracks = HLS.from_url(url=connection["href"], session=self.session).to_tracks(language=lang)
         else:
-            raise ValueError(f"Unsupported video media transfer format {connection['transferFormat']!r}")
+            raise ValueError(f"Unsupported transfer format: {connection['transferFormat']}")
 
         for video in tracks.videos:
             # UHD DASH manifest has no range information, so we add it manually
@@ -242,7 +296,7 @@ class iP(Service):
                     id_=hashlib.md5(connection["href"].encode()).hexdigest()[0:6],
                     url=connection["href"],
                     codec=Subtitle.Codec.from_codecs("ttml"),
-                    language=title.language,
+                    language=lang,
                     is_original_lang=True,
                     forced=False,
                     sdh=True,
@@ -252,118 +306,121 @@ class iP(Service):
 
         return tracks
 
-    def get_chapters(self, title: Union[Movie, Episode]) -> list[Chapter]:
-        return []
-
-    def get_widevine_service_certificate(self, **_: Any) -> str:
-        return None
-
-    def get_widevine_license(self, challenge: bytes, **_: Any) -> str:
-        return None
-
-    # service specific functions
-
     def get_data(self, pid: str, slice_id: str) -> dict:
+        """Fetches programme metadata from the GraphQL-like endpoint."""
         json_data = {
             "id": "9fd1636abe711717c2baf00cebb668de",
-            "variables": {
-                "id": pid,
-                "perPage": 200,
-                "page": 1,
-                "sliceId": slice_id if slice_id else None,
-            },
+            "variables": {"id": pid, "perPage": 200, "page": 1, "sliceId": slice_id},
         }
-
         r = self.session.post(self.config["endpoints"]["metadata"], json=json_data)
         r.raise_for_status()
-
-        return r.json()["data"]["programme"]
+        return r.json().get("data", {}).get("programme")
 
     def check_all_versions(self, vpid: str) -> list:
-        media = None
+        """Checks media availability for a given version PID, trying multiple mediators."""
+        session = self.session
+        cert_path = None
+        params = {}
 
         if self.vcodec == "H.265":
-            if not self.config.get("cert"):
-                self.log.error(" - H.265 tracks cannot be requested without an SSL certificate")
-                sys.exit(1)
+            if not self.config.get("certificate"):
+                raise CertificateMissingError("TLS certificate not configured.")
 
-            session = self.session
             session.mount("https://", SSLCiphers())
-            session.mount("http://", SSLCiphers())
+            endpoint_template = self.config["endpoints"]["secure"]
+            mediators = ["securegate.iplayer.bbc.co.uk", "ipsecure.stage.bbc.co.uk"]
             mediaset = "iptv-uhd"
 
-            for mediator in ["securegate.iplayer.bbc.co.uk", "ipsecure.stage.bbc.co.uk"]:
-                availability = session.get(
-                    self.config["endpoints"]["secure"].format(mediator, vpid, mediaset),
-                    cert=self.config["cert"],
-                ).json()
-                if availability.get("media"):
-                    media = availability["media"]
-                    break
+            cert_binary = base64.b64decode(self.config["certificate"])
+            with tempfile.NamedTemporaryFile(mode="w+b", delete=False, suffix=".pem") as cert_file:
+                cert_file.write(cert_binary)
+                cert_path = cert_file.name
 
-            if availability.get("result"):
-                self.log.error(f"Error: {availability['result']}")
-                sys.exit(1)
-
+            params["cert"] = cert_path
         else:
+            endpoint_template = self.config["endpoints"]["open"]
+            mediators = ["open.live.bbc.co.uk", "open.stage.bbc.co.uk"]
             mediaset = "iptv-all"
 
-            for mediator in ["open.live.bbc.co.uk", "open.stage.bbc.co.uk"]:
-                availability = self.session.get(
-                    self.config["endpoints"]["open"].format(mediator, mediaset, vpid),
-                ).json()
+        for mediator in mediators:
+            if self.vcodec == "H.265":
+                url = endpoint_template.format(mediator, vpid, mediaset)
+            else:
+                url = endpoint_template.format(mediator, mediaset, vpid)
+
+            try:
+                r = session.get(url, **params)
+                r.raise_for_status()
+                availability = r.json()
+
                 if availability.get("media"):
-                    media = availability["media"]
-                    break
+                    return availability["media"]
+                if availability.get("result"):
+                    self.log.warning(
+                        f"Mediator '{mediator}' reported an error: {availability['result']}"
+                    )
 
-            if availability.get("result"):
-                self.log.error(f"Error: {availability['result']}")
-                sys.exit(1)
+            except Exception as e:
+                self.log.debug(f"Failed to check mediator '{mediator}': {e}")
+            
+            finally:
+                if cert_path is not None:
+                    Path(cert_path).unlink(missing_ok=True)
 
-        return media
+        return None
 
-    def fetch_episode(self, pid: str) -> Series:
+    def fetch_episode(self, pid: str) -> Episode:
+        """Fetches and parses data for a single episode."""
         r = self.session.get(self.config["endpoints"]["episodes"].format(pid=pid))
         r.raise_for_status()
+        data = r.json()
 
-        data = json.loads(r.content)
-        episode = data["episodes"][0]
-        subtitle = episode.get("subtitle")
-        year = episode.get("release_date_time", "").split("-")[0]
-        numeric_position = episode.get("numeric_tleo_position")
+        if not data.get("episodes"):
+            return None
 
-        if subtitle is not None:
-            series = re.finditer(r"Series (\d+):|Season (\d+):|(\d{4}/\d{2}): Episode \d+", subtitle or "")
-            season_num = int(next((m.group(1) or m.group(2) or m.group(3).replace("/", "") for m in series), 0))
-            if season_num == 0 and not data.get("slices"):
-                season_num = 1
-            number_match = re.finditer(r"(\d+)\.|Episode (\d+)", subtitle)
-            number = int(next((m.group(1) or m.group(2) for m in number_match), numeric_position or 0))
-            name_match = re.search(r"\d+\. (.+)", subtitle)
-            name = (
-                name_match.group(1)
-                if name_match
-                else subtitle
-                if not re.search(r"Series (\d+): Episode (\d+)", subtitle)
-                else ""
-            )
+        episode_data = data["episodes"][0]
+        subtitle = episode_data.get("subtitle", "")
+        year = (episode_data.get("release_date_time", "") or "").split("-")[0]
+
+        series_match = next(re.finditer(r"Series (\d+).*?:|Season (\d+).*?:|(\d{4}/\d{2}): Episode \d+", subtitle), None)
+        season_num = 0
+        if series_match:
+            season_str = next(g for g in series_match.groups() if g is not None)
+            season_num = int(season_str.replace("/", ""))
+        elif not data.get("slices"):  # Fallback for single-season shows
+            season_num = 1
+
+        num_match = next(re.finditer(r"(\d+)\.|Episode (\d+)", subtitle), None)
+        number = 0
+        if num_match:
+            number = int(next(g for g in num_match.groups() if g is not None))
+        else:
+            number = episode_data.get("numeric_tleo_position", 0)
+
+        name_match = re.search(r"\d+\. (.+)", subtitle)
+        name = ""
+        if name_match:
+            name = name_match.group(1)
+        elif not re.search(r"Series \d+: Episode \d+", subtitle):
+            name = subtitle
 
         return Episode(
-            id_=episode.get("id"),
+            id_=episode_data.get("id"),
             service=self.__class__,
-            title=episode.get("title"),
-            season=season_num if subtitle else 0,
-            number=number if subtitle else 0,
-            name=name if subtitle else "",
+            title=episode_data.get("title"),
+            season=season_num,
+            number=number,
+            name=name,
             language="en",
             year=year,
         )
 
-    def get_episodes(self, episodes: list) -> list:
+    def get_episodes(self, episode_ids: list) -> list[Episode]:
+        """Fetches multiple episodes concurrently."""
         with ThreadPoolExecutor(max_workers=10) as executor:
-            tasks = list(executor.map(self.fetch_episode, episodes))
+            tasks = executor.map(self.fetch_episode, episode_ids)
         return [task for task in tasks if task is not None]
-
+    
     def find(self, pattern, string, group=None):
         if group:
             m = re.search(pattern, string)
@@ -371,3 +428,23 @@ class iP(Service):
                 return m.group(group)
         else:
             return next(iter(re.findall(pattern, string)), None)
+
+
+class iPlayerError(Exception):
+    """Base exception for this service."""
+    pass
+
+
+class CertificateMissingError(iPlayerError):
+    """Raised when an TLS certificate is required but not provided."""
+    pass
+
+
+class NoStreamsAvailableError(iPlayerError):
+    """Raised when no playable streams are found for a title."""
+    pass
+
+
+class MetadataError(iPlayerError):
+    """Raised when metadata for a title cannot be found."""
+    pass
