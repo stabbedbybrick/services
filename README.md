@@ -3,7 +3,7 @@ A collection of non-premium services for Devine and Unshackle.
 ## Usage:
 Clone repository:
 
-`git clone https://github.com/stabbedbybrick/devine-services.git`
+`git clone https://github.com/stabbedbybrick/services.git`
 
 Add folder to `devine.yaml` or `unshackle.yaml`:
 
