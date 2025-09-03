@@ -14,13 +14,26 @@ from typing import Any, Union
 import click
 from bs4 import XMLParsedAsHTMLWarning
 from click import Context
-from devine.core.manifests import DASH, HLS
-from devine.core.search_result import SearchResult
-from devine.core.service import Service
-from devine.core.titles import Episode, Movie, Movies, Series
-from devine.core.tracks import Audio, Chapters, Subtitle, Tracks, Video
-from devine.core.utils.collections import as_list
-from devine.core.utils.sslciphers import SSLCiphers
+
+try:
+    from devine.core.manifests import DASH, HLS  # type: ignore
+    from devine.core.search_result import SearchResult  # type: ignore
+    from devine.core.service import Service  # type: ignore
+    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
+    from devine.core.tracks import Audio, Chapters, Subtitle, Tracks, Video  # type: ignore
+    from devine.core.utils.collections import as_list  # type: ignore
+    from devine.core.utils.sslciphers import SSLCiphers  # type: ignore
+except ImportError:
+    try:
+        from unshackle.core.manifests import DASH, HLS
+        from unshackle.core.search_result import SearchResult
+        from unshackle.core.service import Service
+        from unshackle.core.titles import Episode, Movie, Movies, Series
+        from unshackle.core.tracks import Audio, Chapters, Subtitle, Tracks, Video
+        from unshackle.core.utils.collections import as_list
+        from unshackle.core.utils.sslciphers import SSLCiphers
+    except ImportError:
+        raise ImportError("iP service requires devine or unshackle to be installed")
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 

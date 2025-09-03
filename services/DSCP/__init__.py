@@ -11,12 +11,25 @@ from urllib.parse import urljoin
 
 import click
 from click import Context
-from devine.core.credential import Credential
-from devine.core.manifests import DASH, HLS
-from devine.core.search_result import SearchResult
-from devine.core.service import Service
-from devine.core.titles import Episode, Movie, Movies, Series
-from devine.core.tracks import Chapters, Tracks
+
+try:
+    from devine.core.credential import Credential  # type: ignore
+    from devine.core.manifests import DASH, HLS  # type: ignore
+    from devine.core.search_result import SearchResult  # type: ignore
+    from devine.core.service import Service  # type: ignore
+    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
+    from devine.core.tracks import Chapters, Tracks  # type: ignore
+except ImportError:
+    try:
+        from unshackle.core.credential import Credential
+        from unshackle.core.manifests import DASH, HLS
+        from unshackle.core.search_result import SearchResult
+        from unshackle.core.service import Service
+        from unshackle.core.titles import Episode, Movie, Movies, Series
+        from unshackle.core.tracks import Chapters, Tracks
+    except ImportError:
+        raise ImportError("DSCP service requires devine or unshackle to be installed")
+    
 from requests import Request
 
 

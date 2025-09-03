@@ -7,11 +7,23 @@ from typing import Any, Union
 
 import click
 from click import Context
-from devine.core.manifests.dash import DASH
-from devine.core.search_result import SearchResult
-from devine.core.service import Service
-from devine.core.titles import Episode, Movie, Movies, Series
-from devine.core.tracks import Chapter, Chapters, Tracks
+
+try:
+    from devine.core.manifests.dash import DASH  # type: ignore
+    from devine.core.search_result import SearchResult  # type: ignore
+    from devine.core.service import Service  # type: ignore
+    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
+    from devine.core.tracks import Chapter, Chapters, Tracks  # type: ignore
+except ImportError:
+    try:
+        from unshackle.core.manifests.dash import DASH
+        from unshackle.core.search_result import SearchResult
+        from unshackle.core.service import Service
+        from unshackle.core.titles import Episode, Movie, Movies, Series
+        from unshackle.core.tracks import Chapter, Chapters, Tracks
+    except ImportError:
+        raise ImportError("UKTV service requires devine or unshackle to be installed")
+
 from lxml import etree
 
 

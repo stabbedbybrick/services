@@ -11,12 +11,23 @@ from urllib.parse import unquote, urlparse
 import click
 import requests
 
-from devine.core.credential import Credential
-from devine.core.manifests import DASH
-from devine.core.search_result import SearchResult
-from devine.core.service import Service
-from devine.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
-from devine.core.tracks import Chapter, Tracks
+try:
+    from devine.core.credential import Credential  # type: ignore
+    from devine.core.manifests import DASH  # type: ignore
+    from devine.core.search_result import SearchResult  # type: ignore
+    from devine.core.service import Service  # type: ignore
+    from devine.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T  # type: ignore
+    from devine.core.tracks import Chapter, Tracks  # type: ignore
+except ImportError:
+    try:
+        from unshackle.core.credential import Credential
+        from unshackle.core.manifests import DASH
+        from unshackle.core.search_result import SearchResult
+        from unshackle.core.service import Service
+        from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
+        from unshackle.core.tracks import Chapter, Tracks
+    except ImportError:
+        raise ImportError("ROKU service requires devine or unshackle to be installed")
 
 
 class ROKU(Service):

@@ -8,14 +8,29 @@ from typing import Any, Optional, Union
 from urllib.parse import urljoin
 
 import click
-from devine.core.constants import AnyTrack
-from devine.core.manifests import DASH
-from devine.core.search_result import SearchResult
-from devine.core.service import Service
-from devine.core.titles import Episode, Series, Title_T, Titles_T
-from devine.core.tracks import Chapter, Chapters, Tracks
-from devine.core.utils.sslciphers import SSLCiphers
-from devine.core.utils.xml import load_xml
+
+try:
+    from devine.core.constants import AnyTrack  # type: ignore
+    from devine.core.manifests import DASH  # type: ignore
+    from devine.core.search_result import SearchResult  # type: ignore
+    from devine.core.service import Service  # type: ignore
+    from devine.core.titles import Episode, Series, Title_T, Titles_T  # type: ignore
+    from devine.core.tracks import Chapter, Chapters, Tracks  # type: ignore
+    from devine.core.utils.sslciphers import SSLCiphers  # type: ignore
+    from devine.core.utils.xml import load_xml  # type: ignore
+except ImportError:
+    try:
+        from unshackle.core.constants import AnyTrack
+        from unshackle.core.manifests import DASH
+        from unshackle.core.search_result import SearchResult
+        from unshackle.core.service import Service
+        from unshackle.core.titles import Episode, Series, Title_T, Titles_T
+        from unshackle.core.tracks import Chapter, Chapters, Tracks
+        from unshackle.core.utils.sslciphers import SSLCiphers
+        from unshackle.core.utils.xml import load_xml
+    except ImportError:
+        raise ImportError("CBS service requires devine or unshackle to be installed")
+
 from requests import Request
 
 

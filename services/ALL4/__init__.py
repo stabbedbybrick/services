@@ -3,8 +3,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import sys
 import re
+import sys
 from collections.abc import Generator
 from datetime import datetime, timezone
 from http.cookiejar import MozillaCookieJar
@@ -16,12 +16,24 @@ from Crypto.Util.Padding import unpad
 from Cryptodome.Cipher import AES
 from pywidevine.cdm import Cdm as WidevineCdm
 
-from devine.core.credential import Credential
-from devine.core.manifests.dash import DASH
-from devine.core.search_result import SearchResult
-from devine.core.service import Service
-from devine.core.titles import Episode, Movie, Movies, Series
-from devine.core.tracks import Chapter, Subtitle, Tracks
+try:
+    from devine.core.credential import Credential  # type: ignore
+    from devine.core.manifests.dash import DASH  # type: ignore
+    from devine.core.search_result import SearchResult  # type: ignore
+    from devine.core.service import Service  # type: ignore
+    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
+    from devine.core.tracks import Chapter, Subtitle, Tracks  # type: ignore
+except ImportError:
+    try:
+        from unshackle.core.credential import Credential
+        from unshackle.core.manifests.dash import DASH
+        from unshackle.core.search_result import SearchResult
+        from unshackle.core.service import Service
+        from unshackle.core.titles import Episode, Movie, Movies, Series
+        from unshackle.core.tracks import Chapter, Subtitle, Tracks
+    except ImportError:
+        raise ImportError("ALL4 service requires devine or unshackle to be installed")
+    
 
 
 class ALL4(Service):
@@ -261,6 +273,11 @@ class ALL4(Service):
             )
         else:
             self.log.warning("- Subtitles are either missing or empty")
+
+        for track in tracks.audio:
+            role = track.data["dash"]["representation"].find("Role")
+            if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
+                track.descriptive = True
 
         return tracks
 
