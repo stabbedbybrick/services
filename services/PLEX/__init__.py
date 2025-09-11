@@ -39,7 +39,7 @@ class PLEX(Service):
     Service code for Plex's free streaming service (https://watch.plex.tv/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Geofence: API and downloads are locked into whatever region the user is in
@@ -180,7 +180,7 @@ class PLEX(Service):
         return tracks
 
     def get_chapters(self, title: Movie | Episode) -> Chapters:
-        if not (markers := title.data.get("Marker", [])):
+        if not (markers := title.data.get("Marker")):
             try:
                 metadata = self._request(
                 "POST", "/playQueues",
@@ -196,7 +196,10 @@ class PLEX(Service):
 
             except Exception as e:
                 self.log.debug("Failed to fetch markers: %s", e)
-                pass
+                return Chapters()
+        
+        if not markers:
+            return Chapters()
 
         chapters = []
         for cue in markers:
