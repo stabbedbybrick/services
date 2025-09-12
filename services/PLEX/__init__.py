@@ -39,7 +39,7 @@ class PLEX(Service):
     Service code for Plex's free streaming service (https://watch.plex.tv/).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: None
     Geofence: API and downloads are locked into whatever region the user is in
@@ -129,11 +129,13 @@ class PLEX(Service):
         if not match:
             raise ValueError(f"Could not parse ID from title: {self.title}")
 
-        kind, guid, path = (match.group(i) for i in ("type", "id", "url_path"))
+        kind, guid, url_path = (match.group(i) for i in ("type", "id", "url_path"))
 
         if kind == "show":
-            if path is not None:
-                episode = self._episode(urlparse(self.title).path)
+            if url_path is not None:
+                path = urlparse(self.title).path
+                url = re.sub(r"/[a-z]{2}(?:-[A-Z]{2})?/", "/", path)
+                episode = self._episode(url)
                 return Series(episode)
             
             episodes = self._series(guid)
