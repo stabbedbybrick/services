@@ -119,6 +119,7 @@ class PLEX(Service):
     def get_titles(self) -> Movies | Series:
         url_pattern = re.compile(
             r"^https://watch.plex.tv/"
+            r"(?:[a-z]{2}(?:-[A-Z]{2})?/)??"
             r"(?P<type>movie|show)/"
             r"(?P<id>[\w-]+)"
             r"(?P<url_path>(/season/\d+/episode/\d+))?"
