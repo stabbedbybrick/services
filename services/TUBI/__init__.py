@@ -36,7 +36,7 @@ class TUBI(Service):
     Service code for TubiTV streaming service (https://tubitv.com/)
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -227,16 +227,21 @@ class TUBI(Service):
         return tracks
 
     def get_chapters(self, title: Title_T) -> Chapters:
-        cue_points = title.data.get("credit_cuepoints")
-        if not cue_points:
+        if not (cue_points := title.data.get("credit_cuepoints")):
             return Chapters()
         
         chapters = []
-        for title, cuepoint in cue_points.items():
-            if cuepoint > 0:
-                chapters.append(Chapter(timestamp=float(cuepoint), name=title))
+        if cue_points.get("recap_start"):
+            chapters.append(Chapter(name="Recap", timestamp=float(cue_points["recap_start"])))
+        if cue_points.get("intro_start") and cue_points.get("intro_end"):
+            chapters.append(Chapter(name="Intro", timestamp=float(cue_points["intro_start"])))
+            chapters.append(Chapter(timestamp=float(cue_points["intro_end"])))
+        if cue_points.get("early_credits_start"):
+            chapters.append(Chapter(name="Early Credits", timestamp=float(cue_points["early_credits_start"])))
+        if cue_points.get("postlude"):
+            chapters.append(Chapter(name="End Credits", timestamp=float(cue_points["postlude"])))
 
-        return Chapters(chapters)
+        return sorted(chapters, key=lambda x: x.timestamp)
 
     def get_widevine_service_certificate(self, **_: Any) -> str:
         return None
