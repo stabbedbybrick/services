@@ -39,7 +39,7 @@ class TVNZ(Service):
     Service code for TVNZ streaming service (https://www.tvnz.co.nz).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: Credentials
     Robustness:
@@ -116,6 +116,9 @@ class TVNZ(Service):
             cache.set(tokens, expiration=response.headers.get("aat_expires_in"))
 
         self.session.headers.update({"Authorization": "Bearer {}".format(tokens["access_token"])})
+
+        # Disable SSL verification due to issues with newer versions of requests library.
+        self.session.verify = False
 
     def get_titles(self) -> Union[Movies, Series]:
         try:
