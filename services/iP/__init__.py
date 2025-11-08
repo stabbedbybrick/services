@@ -14,26 +14,13 @@ from typing import Any, Union
 import click
 from bs4 import XMLParsedAsHTMLWarning
 from click import Context
-
-try:
-    from devine.core.manifests import DASH, HLS  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
-    from devine.core.tracks import Audio, Chapters, Subtitle, Tracks, Video  # type: ignore
-    from devine.core.utils.collections import as_list  # type: ignore
-    from devine.core.utils.sslciphers import SSLCiphers  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.manifests import DASH, HLS
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series
-        from unshackle.core.tracks import Audio, Chapters, Subtitle, Tracks, Video
-        from unshackle.core.utils.collections import as_list
-        from unshackle.core.utils.sslciphers import SSLCiphers
-    except ImportError:
-        raise ImportError("iP service requires devine or unshackle to be installed")
+from unshackle.core.manifests import DASH, HLS
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series
+from unshackle.core.tracks import Audio, Chapters, Subtitle, Tracks, Video
+from unshackle.core.utils.collections import as_list
+from unshackle.core.utils.sslciphers import SSLCiphers
 
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
@@ -44,7 +31,7 @@ class iP(Service):
     Service code for the BBC iPlayer streaming service (https://www.bbc.co.uk/iplayer).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: None
     Security: None
@@ -190,16 +177,18 @@ class iP(Service):
             return versions
 
         # Fallback to scraping webpage if API returns no versions
-        self.log.info("No versions in playlist API, falling back to webpage scrape.")
+        self.log.debug("No versions in playlist API, falling back to webpage scrape.")
         r = self.session.get(self.config["base_url"].format(type="episode", pid=pid))
         r.raise_for_status()
         match = re.search(r"window\.__IPLAYER_REDUX_STATE__\s*=\s*(.*?);\s*</script>", r.text)
         if match:
             redux_data = json.loads(match.group(1))
+            redux_versions = redux_data.get("versions")
+            versions = redux_versions.values() if isinstance(redux_versions, dict) else redux_versions
             # Filter out audio-described versions
             return [
                 {"pid": v.get("id")}
-                for v in redux_data.get("versions", {}).values()
+                for v in versions
                 if v.get("kind") != "audio-described" and v.get("id")
             ]
 
