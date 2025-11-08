@@ -9,26 +9,13 @@ from urllib.parse import urljoin
 
 import click
 from click import Context
-
-try:
-    from devine.core.constants import AnyTrack  # type: ignore
-    from devine.core.manifests.dash import DASH  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
-    from devine.core.tracks import Chapter, Chapters, Subtitle, Tracks  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.constants import AnyTrack
-        from unshackle.core.manifests.dash import DASH
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series
-        from unshackle.core.tracks import Chapter, Chapters, Subtitle, Tracks
-    except ImportError:
-        raise ImportError("AUBC service requires devine or unshackle to be installed")
-
 from requests import Request
+from unshackle.core.constants import AnyTrack
+from unshackle.core.manifests.dash import DASH
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series
+from unshackle.core.tracks import Chapter, Chapters, Subtitle, Tracks
 
 
 class AUBC(Service):
@@ -37,7 +24,7 @@ class AUBC(Service):
     Service code for ABC iView streaming service (https://iview.abc.net.au/).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -226,11 +213,10 @@ class AUBC(Service):
     
     def create_episode(self, episode: dict) -> Episode:
         title = episode["showTitle"]
-        season = re.search(r"Series (\d+)", episode.get("title"))
-        number = re.search(r"Episode (\d+)", episode.get("title"))
-        names_a = re.search(r"Series \d+ Episode \d+ (.+)", episode.get("title"))
-        names_b = re.search(r"Series \d+ (.+)", episode.get("title"))
-        name = names_a.group(1) if names_a else names_b.group(1) if names_b else episode.get("displaySubtitle")
+        series_id = episode.get("analytics", {}).get("dataLayer", {}).get("d_series_id", "")
+        episode_name = episode.get("analytics", {}).get("dataLayer", {}).get("d_episode_name", "")
+        number = re.search(r"Episode (\d+)", episode.get("displaySubtitle", ""))
+        name = re.search(r"S\d+\sEpisode\s\d+\s(.*)", episode_name)
 
         language = episode.get("analytics", {}).get("dataLayer", {}).get("d_language", "en")
 
@@ -238,9 +224,9 @@ class AUBC(Service):
             id_=episode["id"],
             service=self.__class__,
             title=title,
-            season=int(season.group(1)) if season else 0,
+            season=int(series_id.split("-")[-1]) if series_id else 0,
             number=int(number.group(1)) if number else 0,
-            name=name,
+            name=name.group(1) if name else None,
             data=episode,
             language=language,
         )
