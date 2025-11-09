@@ -8,24 +8,12 @@ from urllib.parse import urlparse
 
 import click
 from click import Context
-
-try:
-    from devine.core.manifests.dash import DASH  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
-    from devine.core.tracks import Chapter, Chapters, Tracks  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.manifests.dash import DASH
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series
-        from unshackle.core.tracks import Chapter, Chapters, Tracks
-    except ImportError:
-        raise ImportError("STV service requires devine or unshackle to be installed")
-    
 from lxml import etree
+from unshackle.core.manifests.dash import DASH
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series
+from unshackle.core.tracks import Chapter, Chapters, Tracks
 
 
 class STV(Service):
@@ -33,7 +21,7 @@ class STV(Service):
     Service code for STV Player streaming service (https://player.stv.tv/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -120,7 +108,7 @@ class STV(Service):
                     if episode.get("playerSeries") and re.match(r"Series \d+", episode["playerSeries"]["name"])
                     else 0,
                     number=int(episode.get("number", 0)),
-                    name=episode.get("title"),
+                    name=episode.get("title", "").lstrip("0123456789. ").lstrip(),
                     language="en",
                     data=episode,
                 )
@@ -140,10 +128,11 @@ class STV(Service):
                     service=self.__class__,
                     title=data["results"].get("name"),
                     season=int(episode["playerSeries"]["name"].split(" ")[1])
-                    if episode.get("playerSeries") and re.match(r"Series \d+", episode["playerSeries"]["name"])
+                    if episode.get("playerSeries")
+                    and re.match(r"Series \d+", episode["playerSeries"]["name"])
                     else 0,
                     number=int(episode.get("number", 0)),
-                    name=episode.get("title"),
+                    name=episode.get("title", "").lstrip("0123456789. ").lstrip(),
                     language="en",
                     data=episode,
                 )
