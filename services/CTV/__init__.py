@@ -11,24 +11,12 @@ from typing import Any, Optional
 
 import click
 from pywidevine.cdm import Cdm as WidevineCdm
-
-try:
-    from devine.core.credential import Credential  # type: ignore
-    from devine.core.manifests import DASH  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T  # type: ignore
-    from devine.core.tracks import Chapter, Subtitle, Video, Audio, Tracks  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.credential import Credential
-        from unshackle.core.manifests import DASH
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
-        from unshackle.core.tracks import Chapter, Subtitle, Video, Audio, Tracks
-    except ImportError:
-        raise ImportError("CTV service requires devine or unshackle to be installed")
+from unshackle.core.credential import Credential
+from unshackle.core.manifests import DASH
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
+from unshackle.core.tracks import Audio, Chapter, Subtitle, Tracks, Video
 
 
 class CTV(Service):
@@ -36,7 +24,7 @@ class CTV(Service):
     Service code for CTV.ca (https://www.ctv.ca)
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: Credentials for subscription, none for freely available titles
     Robustness:
