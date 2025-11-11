@@ -1,46 +1,33 @@
 from __future__ import annotations
 
 import base64
+import concurrent.futures
 import hashlib
 import hmac
 import json
 import re
+import sys
 import time
 import uuid
-import m3u8
-import sys
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
-import concurrent.futures
 from datetime import datetime, timezone
 from http.cookiejar import MozillaCookieJar
 from typing import Any, Optional, Union
 
 import click
+import m3u8
 from click import Context
-
-try:
-    from devine.core.credential import Credential  # type: ignore
-    from devine.core.manifests import HLS  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
-    from devine.core.tracks import Chapter, Chapters, Subtitle, Tracks  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.credential import Credential
-        from unshackle.core.manifests import HLS
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series
-        from unshackle.core.tracks import Chapter, Chapters, Video, Subtitle, Tracks
-        from unshackle.core.config import config
-        from unshackle.core.downloaders import requests
-    except ImportError:
-        raise ImportError("10Play service requires devine or unshackle to be installed")
-
 from langcodes import Language
 from requests import Request
+from unshackle.core.config import config
+from unshackle.core.credential import Credential
+from unshackle.core.downloaders import requests
+from unshackle.core.manifests import HLS
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series
+from unshackle.core.tracks import Chapter, Chapters, Subtitle, Tracks, Video
 
 
 class TEN(Service):
@@ -49,7 +36,7 @@ class TEN(Service):
     Service code for 10Play streaming service (https://10.com.au/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: credentials
     Geofence: AU (API and downloads)
@@ -68,6 +55,7 @@ class TEN(Service):
     Notes:
         - 10Play uses transport streams for HLS, meaning the video and audio are a part of the same stream.
           As a result, only videos are listed as tracks. But the audio will be included as well.
+        - Since 1080p streams require some manipulation of the manifest, n_m3u8dl_re downloader is required.
 
     """
 
@@ -352,7 +340,7 @@ class TEN(Service):
 
         first_segment = playlist_obj.segments[0].uri
         if self._head_request(first_segment) == 200:
-            playlist_file = config.directories.temp / f"playlist_{quality_info['quality']}.m3u8"
+            playlist_file = config.directories.cache / "TEN" / f"playlist_{quality_info['quality']}.m3u8"
             playlist_obj.dump(playlist_file)
 
             video = Video(
