@@ -11,24 +11,12 @@ from typing import Any, Optional, Union
 import click
 from bs4 import BeautifulSoup
 from click import Context
-
-try:
-    from devine.core.credential import Credential  # type: ignore
-    from devine.core.manifests.dash import DASH  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
-    from devine.core.tracks import Chapter, Chapters, Subtitle, Tracks  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.credential import Credential
-        from unshackle.core.manifests.dash import DASH
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series
-        from unshackle.core.tracks import Chapter, Chapters, Subtitle, Tracks
-    except ImportError:
-        raise ImportError("ITV service requires devine or unshackle to be installed")
+from unshackle.core.credential import Credential
+from unshackle.core.manifests.dash import DASH
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series
+from unshackle.core.tracks import Chapter, Chapters, Subtitle, Tracks
 
 
 class ITV(Service):
@@ -36,7 +24,7 @@ class ITV(Service):
     Service code for ITVx streaming service (https://www.itv.com/).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: Cookies (Optional for free content | Required for premium content)
     Robustness:
