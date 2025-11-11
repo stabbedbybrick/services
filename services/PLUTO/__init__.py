@@ -7,24 +7,12 @@ from http.cookiejar import CookieJar
 from typing import Any, Optional
 
 import click
-
-try:
-    from devine.core.credential import Credential  # type: ignore
-    from devine.core.manifests import DASH, HLS  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T  # type: ignore
-    from devine.core.tracks import Chapters, Tracks  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.credential import Credential
-        from unshackle.core.manifests import DASH, HLS
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
-        from unshackle.core.tracks import Chapters, Tracks
-    except ImportError:
-        raise ImportError("PLUTO service requires devine or unshackle to be installed")
+from unshackle.core.credential import Credential
+from unshackle.core.manifests import DASH, HLS
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
+from unshackle.core.tracks import Chapters, Tracks
 
 
 class PLUTO(Service):
@@ -34,7 +22,7 @@ class PLUTO(Service):
     Credit to @wks_uwu for providing an alternative API, making the codebase much cleaner
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: None
     Robustness:
