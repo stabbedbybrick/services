@@ -11,26 +11,13 @@ from urllib.parse import urlparse, urlunparse
 import click
 import requests
 from click import Context
-
-try:
-    from devine.core.manifests.dash import DASH  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
-    from devine.core.tracks import Chapter, Tracks  # type: ignore
-    from devine.core.utils.sslciphers import SSLCiphers  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.manifests.dash import DASH
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series
-        from unshackle.core.tracks import Chapter, Tracks
-        from unshackle.core.utils.sslciphers import SSLCiphers
-    except ImportError:
-        raise ImportError("MY5 service requires devine or unshackle to be installed")
-    
 from pywidevine.cdm import Cdm as WidevineCdm
+from unshackle.core.manifests.dash import DASH
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series
+from unshackle.core.tracks import Chapter, Tracks
+from unshackle.core.utils.sslciphers import SSLCiphers
 
 
 class MY5(Service):
@@ -39,7 +26,7 @@ class MY5(Service):
     Service code for Channel 5's My5 streaming service (https://channel5.com).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Robustness:
