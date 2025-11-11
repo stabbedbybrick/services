@@ -10,24 +10,12 @@ from urllib.parse import unquote, urlparse
 
 import click
 import requests
-
-try:
-    from devine.core.credential import Credential  # type: ignore
-    from devine.core.manifests import DASH  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T  # type: ignore
-    from devine.core.tracks import Chapter, Tracks  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.credential import Credential
-        from unshackle.core.manifests import DASH
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
-        from unshackle.core.tracks import Chapter, Tracks
-    except ImportError:
-        raise ImportError("ROKU service requires devine or unshackle to be installed")
+from unshackle.core.credential import Credential
+from unshackle.core.manifests import DASH
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
+from unshackle.core.tracks import Chapter, Tracks
 
 
 class ROKU(Service):
@@ -35,7 +23,7 @@ class ROKU(Service):
     Service code for The Roku Channel (https://therokuchannel.roku.com)
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: Cookies
     Robustness:
