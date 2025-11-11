@@ -4,33 +4,20 @@ import json
 import re
 import uuid
 from collections.abc import Generator
-from typing import Any, Optional
-from urllib.parse import urlparse, urljoin, quote
-from http.cookiejar import MozillaCookieJar
 from concurrent.futures import ThreadPoolExecutor
+from http.cookiejar import MozillaCookieJar
+from typing import Any, Optional
+from urllib.parse import quote, urljoin, urlparse
 
 import click
 from click import Context
-
-try:
-    from devine.core.credential import Credential  # type: ignore
-    from devine.core.manifests import DASH, HLS  # type: ignore
-    from devine.core.search_result import SearchResult  # type: ignore
-    from devine.core.service import Service  # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series  # type: ignore
-    from devine.core.tracks import Chapter, Chapters, Tracks  # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.credential import Credential
-        from unshackle.core.manifests import DASH, HLS
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series
-        from unshackle.core.tracks import Chapter, Chapters, Tracks
-    except ImportError:
-        raise ImportError("PLEX service requires devine or unshackle to be installed")
-
 from requests import Request
+from unshackle.core.credential import Credential
+from unshackle.core.manifests import DASH, HLS
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series
+from unshackle.core.tracks import Chapter, Chapters, Tracks
 
 
 class PLEX(Service):
@@ -39,7 +26,7 @@ class PLEX(Service):
     Service code for Plex's free streaming service (https://watch.plex.tv/).
 
     \b
-    Version: 1.0.3
+    Version: 1.0.4
     Author: stabbedbybrick
     Authorization: None
     Geofence: API and downloads are locked into whatever region the user is in
