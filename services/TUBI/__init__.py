@@ -9,26 +9,13 @@ from collections.abc import Generator
 from typing import Any
 
 import click
-
-try:
-    from devine.core.downloaders import aria2c, requests  # type: ignore
-    from devine.core.manifests import DASH  # type: ignore
-    from devine.core.search_result import SearchResult # type: ignore
-    from devine.core.service import Service # type: ignore
-    from devine.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T # type: ignore
-    from devine.core.tracks import Chapter, Chapters, Subtitle, Track, Tracks # type: ignore
-except ImportError:
-    try:
-        from unshackle.core.downloaders import aria2c, requests
-        from unshackle.core.manifests import DASH
-        from unshackle.core.search_result import SearchResult
-        from unshackle.core.service import Service
-        from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
-        from unshackle.core.tracks import Chapter, Chapters, Subtitle, Track, Tracks
-    except ImportError:
-        raise ImportError("TUBI service requires devine or unshackle to be installed")
-    
 from langcodes import Language
+from unshackle.core.downloaders import aria2c, requests
+from unshackle.core.manifests import DASH
+from unshackle.core.search_result import SearchResult
+from unshackle.core.service import Service
+from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
+from unshackle.core.tracks import Chapter, Chapters, Subtitle, Track, Tracks
 
 
 class TUBI(Service):
@@ -36,7 +23,7 @@ class TUBI(Service):
     Service code for TubiTV streaming service (https://tubitv.com/)
 
     \b
-    Version: 1.0.2
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: None
     Robustness:
