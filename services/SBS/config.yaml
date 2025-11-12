@@ -1,0 +1,7 @@
+headers:
+  User-Agent: "AndroidTV/!/!"
+
+endpoints:
+  base_url: "https://www.sbs.com.au"
+  dai: "http://pubads.g.doubleclick.net/ondemand/hls/content/2488267/vid/{vid}/streams"
+  catalogue: "https://catalogue.pr.sbsod.com"
