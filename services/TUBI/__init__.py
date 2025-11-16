@@ -26,7 +26,7 @@ class TUBI(Service):
     Service code for TubiTV streaming service (https://tubitv.com/)
 
     \b
-    Version: 1.0.4
+    Version: 1.0.5
     Author: stabbedbybrick
     Authorization: Cookies (Optional)
     Geofence: Locked to whatever region the user is in (API only)
@@ -123,7 +123,7 @@ class TUBI(Service):
 
         params = {
             "app_id": "tubitv",
-            "platform": "androidtv" if self.auth_token else "web",
+            "platform": "web", # web, android, androidtv
             "device_id": str(uuid.uuid4()),
             "content_id": content_id,
             "limit_resolutions[]": [
