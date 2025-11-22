@@ -24,7 +24,7 @@ class RTE(Service):
     Service code for RTE Player streaming service (https://www.rte.ie/player/).
 
     \b
-    Version: 1.0.2
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: None
     Robustness:
