@@ -97,7 +97,7 @@ class RTE(Service):
         title_re = (
             r"https://www\.rte\.ie/player"
             r"/(?P<type>series|movie)"
-            r"/(?P<slug>[a-zA-Z0-9%_-]+)"
+            r"/(?P<slug>[a-zA-Z0-9%_.-]+)"
             r"/(?P<id>[a-zA-Z0-9_\-=?]+)/?$"
         )
         try:
