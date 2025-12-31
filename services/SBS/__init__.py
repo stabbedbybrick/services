@@ -24,7 +24,7 @@ class SBS(Service):
     Service code for SBS ondemand streaming service (https://www.sbs.com.au/ondemand/).
 
     \b
-    Version: 1.0.0
+    Version: 1.0.1
     Author: stabbedbybrick
     Authorization: None
     Geofence: AU (API and downloads)
@@ -33,7 +33,7 @@ class SBS(Service):
 
     \b
     Tips:
-        - Input should be comlete URL:
+        - Input should be complete URL:
           SERIES: https://www.sbs.com.au/ondemand/tv-series/reckless
           EPISODE: https://www.sbs.com.au/ondemand/tv-series/reckless/season-1/reckless-s1-ep1/2459384899653
           MOVIE: https://www.sbs.com.au/ondemand/movie/silence/1363535939614
@@ -42,7 +42,7 @@ class SBS(Service):
     \b
     Notes:
         - SBS uses transport streams for HLS, meaning the video and audio are a part of the same stream.
-          As a result, only videos are listed as tracks. But the audio will be included as well.
+          As a result only videos are listed as tracks, but the audio will be included as well.
 
     """
 
@@ -118,17 +118,20 @@ class SBS(Service):
         section = body.find("par") or body
 
         manifest = next((x.get("src") for x in section.findall("video")), None)
-        subtitles = [(x.get("src"), x.get("lang")) for x in section.findall("textstream")]
+        subtitles = [(x.get("src"), x.get("lang"), x.get("type")) for x in section.findall("textstream")]
         
         tracks = HLS.from_url(manifest, self.session).to_tracks(title.language)
 
         if subtitles:
-            for url, lang in subtitles:
+            for url, lang, type in subtitles:
+                if "ttaf+xml" in type:
+                    continue
+                codec = type.split("/")[-1]
                 tracks.add(
                     Subtitle(
                         id_=hashlib.md5(url.encode()).hexdigest()[0:6],
                         url=url,
-                        codec=Subtitle.Codec.from_mime(url[-3:]),
+                        codec=Subtitle.Codec.from_mime(codec),
                         language=lang,
                         sdh="_CC" in url,
                     )
