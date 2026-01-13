@@ -24,7 +24,7 @@ class RTE(Service):
     Service code for RTE Player streaming service (https://www.rte.ie/player/).
 
     \b
-    Version: 1.0.3
+    Version: 1.0.4
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -65,7 +65,7 @@ class RTE(Service):
     def search(self) -> Generator[SearchResult, None, None]:
         params = {
             "byProgramType": "Series|Movie",
-            "q": f"title:({self.title})",
+            "q": f"*{self.title}*",
             "range": "0-40",
             "schema": "2.15",
             "sort": "rte$rank|desc",
