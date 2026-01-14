@@ -8,6 +8,7 @@ from typing import Any, Optional, Union
 from urllib.parse import urljoin
 
 import click
+import requests
 from requests import Request
 from unshackle.core.constants import AnyTrack
 from unshackle.core.manifests import DASH
@@ -24,7 +25,7 @@ class RTE(Service):
     Service code for RTE Player streaming service (https://www.rte.ie/player/).
 
     \b
-    Version: 1.0.3
+    Version: 1.0.5
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -126,7 +127,11 @@ class RTE(Service):
             raise ValueError("Could not find any streams - is the title still available?")
 
         manifest, self.pid = self.get_manifest(media)
-        tracks = DASH.from_url(manifest, self.session).to_tracks(language=title.language)
+        
+        mpd_contents = requests.get(manifest, headers=self.config["headers"], verify=False)
+        tracks = DASH.from_text(mpd_contents.text, manifest).to_tracks(language=title.language)
+        # tracks = DASH.from_url(manifest, self.session).to_tracks(language=title.language)
+        
         for track in tracks.audio:
             role = track.data["dash"]["adaptation_set"].find("Role")
             if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
