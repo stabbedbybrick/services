@@ -24,7 +24,7 @@ class RTE(Service):
     Service code for RTE Player streaming service (https://www.rte.ie/player/).
 
     \b
-    Version: 1.0.4
+    Version: 1.0.5
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -61,6 +61,8 @@ class RTE(Service):
         self.base_url = self.config["endpoints"]["base_url"]
         self.feed = self.config["endpoints"]["feed"]
         self.license = self.config["endpoints"]["license"]
+
+        self.session.headers.update(self.config["headers"])
 
     def search(self) -> Generator[SearchResult, None, None]:
         params = {
@@ -261,16 +263,10 @@ class RTE(Service):
                 "Content may be geo-restricted to IE"
             )
 
-    def _request(self, api: str, params: dict = None, headers: dict = None) -> Any[dict | str]:
+    def _request(self, api: str, **kwargs) -> Any[dict | str]:
         url = urljoin(self.base_url, api)
-        self.session.headers.update(self.config["headers"])
 
-        if params:
-            self.session.params.update(params)
-        if headers:
-            self.session.headers.update(headers)
-
-        prep = self.session.prepare_request(Request("GET", url))
+        prep = self.session.prepare_request(Request("GET", url, **kwargs))
 
         response = self.session.send(prep)
         if response.status_code != 200:
