@@ -21,7 +21,7 @@ class STV(Service):
     Service code for STV Player streaming service (https://player.stv.tv/).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -108,36 +108,34 @@ class STV(Service):
                     if episode.get("playerSeries") and re.match(r"Series \d+", episode["playerSeries"]["name"])
                     else 0,
                     number=int(episode.get("number", 0)),
-                    name=episode.get("title", "").lstrip("0123456789. ").lstrip(),
+                    name=re.sub(r"^\d+\.\s+", "", episode.get("title", "")),
                     language="en",
                     data=episode,
                 )
             ]
 
         elif kind == "summary":
-            r = self.session.get(self.base + f"programmes/{slug}")
-            r.raise_for_status()
-            data = r.json()
+            r = self.session.get(self.base + f"episodes?programme.guid={slug}")
+            if not r.ok:
+                raise ConnectionError(f"Failed to find content for {slug}")
 
-            series = [series.get("guid") for series in data["results"]["series"]]
-            seasons = [self.session.get(self.base + f"episodes?series.guid={i}").json() for i in series]
+            data = r.json()
 
             episodes = [
                 Episode(
                     id_=episode["video"].get("id"),
                     service=self.__class__,
-                    title=data["results"].get("name"),
+                    title=episode["programme"].get("name"),
                     season=int(episode["playerSeries"]["name"].split(" ")[1])
                     if episode.get("playerSeries")
                     and re.match(r"Series \d+", episode["playerSeries"]["name"])
                     else 0,
                     number=int(episode.get("number", 0)),
-                    name=episode.get("title", "").lstrip("0123456789. ").lstrip(),
+                    name=re.sub(r"^\d+\.\s+", "", episode.get("title", "")),
                     language="en",
                     data=episode,
                 )
-                for season in seasons
-                for episode in season["results"]
+                for episode in data["results"]
             ]
 
         self.session.headers.pop("stv-drm")
