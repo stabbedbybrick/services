@@ -21,7 +21,7 @@ class STV(Service):
     Service code for STV Player streaming service (https://player.stv.tv/).
 
     \b
-    Version: 1.0.2
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -115,7 +115,7 @@ class STV(Service):
             ]
 
         elif kind == "summary":
-            r = self.session.get(self.base + f"episodes?programme.guid={slug}")
+            r = self.session.get(self.base + f"episodes?programme.guid={slug}&limit=999")
             if not r.ok:
                 raise ConnectionError(f"Failed to find content for {slug}")
 
