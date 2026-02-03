@@ -24,7 +24,7 @@ class CWTV(Service):
     Service code for CWTV streaming service (https://www.cwtv.com/).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: None
     Geofence: US (API and downloads)
@@ -171,7 +171,7 @@ class CWTV(Service):
     # Service specific
 
     def _series(self, guid: str) -> list[Episode]:
-        series = self._request("GET", f"/feed/app-2/videos/show_{guid}/type_episodes/apiversion_24/device_androidtv")
+        series = self._request("GET", f"/feed/app-2/videos/show_{guid}/type_episodes/apiversion_25/device_androidtv")
         if not series.get("items"):
             raise ValueError(f"Could not find any episodes with ID {guid}")
         
@@ -193,7 +193,7 @@ class CWTV(Service):
         return episodes
 
     def _movie(self, guid: str) -> Movie:
-        data = self._request("GET", f"/feed/app-2/videos/show_{guid}/type_episodes/apiversion_24/device_androidtv")
+        data = self._request("GET", f"/feed/app-2/videos/show_{guid}/type_episodes/apiversion_25/device_androidtv")
         if not data.get("items"):
             raise ValueError(f"Could not find any data for ID {guid}")
 
@@ -212,7 +212,7 @@ class CWTV(Service):
         return movies
 
     def _episode(self, guid: str) -> Episode:
-        data = self._request("GET", f"/feed/app-2/video-meta/guid_{guid}/apiversion_24/device_androidtv")
+        data = self._request("GET", f"/feed/app-2/video-meta/guid_{guid}/apiversion_25/device_androidtv")
         if not data.get("video"):
             raise ValueError(f"Could not find any data for ID {guid}")
 
@@ -238,7 +238,9 @@ class CWTV(Service):
 
         response = self.session.send(prep)
         if response.status_code != 200:
-            raise ConnectionError(f"{response.text}")
+            if response.status_code == 452:
+                raise ConnectionError(f"{response.status_code} - possible geo-restriction")
+            raise ConnectionError(f"{response.content}")
 
         try:
             return json.loads(response.content)
