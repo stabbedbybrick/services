@@ -33,7 +33,7 @@ class DSCP(Service):
     Credit to @sp4rk.y for the subtitle fix.
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: Cookies for subscription, none for freely available titles
     Robustness:
@@ -515,13 +515,17 @@ class DSCP(Service):
         ]
     
     def _sport(self, title: str) -> Movie:
+        title_id = title
+        if len(title_id.split("/")) > 1:
+            title_id = title_id.split("/")[-1]
+
         params = {
             "include": "default",
             "decorators": "viewingHistory,badges,isFavorite,contentAction",
         }
         data = self._request("GET", "/cms/routes/sport/{}".format(title), params=params)
 
-        content = next((x for x in data["included"] if x.get("attributes", {}).get("alternateId", "") == title), None)
+        content = next((x for x in data["included"] if x.get("attributes", {}).get("alternateId", "") == title_id), None)
         if not content:
             raise ValueError(f"Content not found for title: {title}")
 
