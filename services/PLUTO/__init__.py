@@ -22,7 +22,7 @@ class PLUTO(Service):
     Credit to @wks_uwu for providing an alternative API, making the codebase much cleaner
 
     \b
-    Version: 1.0.2
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -55,7 +55,7 @@ class PLUTO(Service):
     ALIASES = ("plu", "plutotv")
     TITLE_RE = (
         r"^"
-        r"(?:https?://(?:www\.)?pluto\.tv(?:/[a-z]{2})?)?"
+        r"(?:https?://(?:www\.)?pluto\.tv(?:/[a-z]{2,})?)?"
         r"(?:/on-demand)?"
         r"/(?P<type>movies|series)"
         r"/(?P<id>[a-z0-9-]+)"
