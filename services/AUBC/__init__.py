@@ -24,7 +24,7 @@ class AUBC(Service):
     Service code for ABC iView streaming service (https://iview.abc.net.au/).
 
     \b
-    Version: 1.0.4
+    Version: 1.0.5
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -180,8 +180,11 @@ class AUBC(Service):
 
     def _series(self, title: str) -> Episode:
         data = self._request("GET", "/v3/series/{}".format(title))
+        content = data if isinstance(data, list) else [data]
 
-        seasons = data if isinstance(data, list) else [data]
+        # Remove duplicate season entries
+        seen = set()
+        seasons = [x for x in content if (key := x.get("id")) not in seen and not seen.add(key)]
 
         episodes = [
             self.create_episode(episode)
