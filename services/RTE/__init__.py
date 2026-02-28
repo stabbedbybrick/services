@@ -24,7 +24,7 @@ class RTE(Service):
     Service code for RTE Player streaming service (https://www.rte.ie/player/).
 
     \b
-    Version: 1.0.5
+    Version: 1.0.6
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -187,6 +187,14 @@ class RTE(Service):
             )
             for movie in data
         ]
+    
+    def _extract_season(self, episode_data: Dict) -> int:
+        if episode_data.get("plprogram$tvSeasonNumber"):
+            return int(episode_data.get("plprogram$tvSeasonNumber"))
+
+        _alt_match = re.search(r'S(\d+)\s*E(\d+)', episode_data.get("title", ""))
+        if _alt_match:
+            return int(_alt_match.group(1))
 
     def _show(self, title: str) -> Episode:
         entry = self._request("/mpx/1uC-gC/rte-prd-prd-all-movies-series?byGuid={}".format(title))["entries"][0]["id"]
@@ -196,7 +204,7 @@ class RTE(Service):
             Episode(
                 id_=episode.get("guid"),
                 title=episode.get("plprogram$longTitle"),
-                season=episode.get("plprogram$tvSeasonNumber") or 0,
+                season=self._extract_season(episode) or 0,
                 number=episode.get("plprogram$tvSeasonEpisodeNumber") or 0,
                 name=episode.get("description"),
                 language=episode["plprogram$languages"][0] if episode.get("plprogram$languages") else "eng",
@@ -216,7 +224,7 @@ class RTE(Service):
             Episode(
                 id_=episode.get("guid"),
                 title=episode.get("plprogram$longTitle"),
-                season=episode.get("plprogram$tvSeasonNumber") or 0,
+                season=self._extract_season(episode) or 0,
                 number=episode.get("plprogram$tvSeasonEpisodeNumber") or 0,
                 name=episode.get("description"),
                 language=episode["plprogram$languages"][0] if episode.get("plprogram$languages") else "eng",
