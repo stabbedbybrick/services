@@ -300,7 +300,7 @@ class DSCP(Service):
                 chapters.append(Chapter(name="Recap", timestamp=chapter["start"]))
                 if chapter.get("end"):
                     chapters.append(Chapter(timestamp=chapter.get("end")))
-            if "intro" in chapter.get("secondaryType", "").lower():
+            elif "intro" in chapter.get("secondaryType", "").lower():
                 chapters.append(Chapter(name="Intro", timestamp=chapter["start"]))
                 if chapter.get("end"):
                     chapters.append(Chapter(timestamp=chapter.get("end")))
@@ -310,7 +310,13 @@ class DSCP(Service):
         if not any(c.timestamp == "00:00:00.000" for c in chapters):
             chapters.append(Chapter(timestamp=0))
 
-        return sorted(chapters, key=lambda x: x.timestamp)
+        seen = set()
+        unique = []
+        for c in sorted(chapters, key=lambda x: x.timestamp):
+            if c.timestamp not in seen:
+                seen.add(c.timestamp)
+                unique.append(c)
+        return unique
 
     def get_widevine_service_certificate(self, challenge: bytes, title: Episode | Movie, **_: Any) -> str:
         if not (license_url := title.data.get("license_url")):
