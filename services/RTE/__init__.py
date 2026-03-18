@@ -24,7 +24,7 @@ class RTE(Service):
     Service code for RTE Player streaming service (https://www.rte.ie/player/).
 
     \b
-    Version: 1.0.5
+    Version: 1.0.6
     Author: stabbedbybrick
     Authorization: None
     Robustness:
@@ -46,6 +46,13 @@ class RTE(Service):
     """
 
     # GEOFENCE = ("ie",)
+    TITLE_RE = (
+        r"https://www\.rte\.ie/player"
+        r"/(?P<type>series|movie)"
+        r"/(?P<slug>[a-zA-Z0-9%_.-]+)"
+        r"/(?P<id>[a-zA-Z0-9_\-=?]+)/?$"
+    )
+    SEASON_RE = re.compile(r"S(\d+)\s*E\d+", re.IGNORECASE)
 
     @staticmethod
     @click.command(name="RTE", short_help="https://www.rte.ie/player/", help=__doc__)
@@ -96,14 +103,8 @@ class RTE(Service):
             )
 
     def get_titles(self) -> Titles_T:
-        title_re = (
-            r"https://www\.rte\.ie/player"
-            r"/(?P<type>series|movie)"
-            r"/(?P<slug>[a-zA-Z0-9%_.-]+)"
-            r"/(?P<id>[a-zA-Z0-9_\-=?]+)/?$"
-        )
         try:
-            kind, _, title_id = (re.match(title_re, self.title).group(i) for i in ("type", "slug", "id"))
+            kind, _, title_id = (re.match(self.TITLE_RE, self.title).group(i) for i in ("type", "slug", "id"))
         except Exception:
             raise ValueError("- Could not parse ID from input")
 
@@ -170,7 +171,7 @@ class RTE(Service):
 
         return r.json()["getWidevineLicenseResponse"]["license"]
 
-    # Service specific functions
+    # Service-specific functions
 
     def _movie(self, title: str) -> Movie:
         params = {"count": "true", "entries": "true", "byId": title}
@@ -182,49 +183,74 @@ class RTE(Service):
                 service=self.__class__,
                 name=movie.get("plprogram$longTitle"),
                 year=movie.get("plprogram$year"),
-                language=movie["plprogram$languages"][0] if movie.get("plprogram$languages") else "eng",
+                language=(movie.get("plprogram$languages") or ["eng"])[0],
                 data=movie,
             )
             for movie in data
         ]
+    
+    def _get_season(self, episode: dict) -> int:
+        val = episode.get("plprogram$tvSeasonNumber")
+        if val is not None:
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                pass
+
+        if match := self.SEASON_RE.search(episode.get("title", "")):
+            return int(match.group(1))
+
+        return 0
 
     def _show(self, title: str) -> Episode:
-        entry = self._request("/mpx/1uC-gC/rte-prd-prd-all-movies-series?byGuid={}".format(title))["entries"][0]["id"]
-        data = self._request("/mpx/1uC-gC/rte-prd-prd-all-programs?bySeriesId={}".format(entry.split("/")[-1]))["entries"]
+        series_search = self._request(f"/mpx/1uC-gC/rte-prd-prd-all-movies-series?byGuid={title}")
+        if not (entries := series_search.get("entries", [])):
+            raise ValueError("No entries for series found")
+            
+        series_id = entries[0]["id"].split("/")[-1]
+        episode_data = self._request(
+            f"/mpx/1uC-gC/rte-prd-prd-all-programs?bySeriesId={series_id}&byProgramType=episode"
+        ).get("entries", [])
 
         return [
             Episode(
                 id_=episode.get("guid"),
                 title=episode.get("plprogram$longTitle"),
-                season=episode.get("plprogram$tvSeasonNumber") or 0,
+                season=self._get_season(episode),
                 number=episode.get("plprogram$tvSeasonEpisodeNumber") or 0,
                 name=episode.get("description"),
-                language=episode["plprogram$languages"][0] if episode.get("plprogram$languages") else "eng",
+                language=(episode.get("plprogram$languages") or ["eng"])[0],
                 service=self.__class__,
+                year=episode.get("plprogram$year"),
                 data=episode,
             )
-            for episode in data
-            if episode["plprogram$programType"] == "episode"
+            for episode in episode_data
         ]
 
     def _episode(self, title: str, guid: str) -> Episode:
         title = title.split("?")[0]
-        entry = self._request("/mpx/1uC-gC/rte-prd-prd-all-movies-series?byGuid={}".format(title))["entries"][0]["id"]
-        data = self._request("/mpx/1uC-gC/rte-prd-prd-all-programs?bySeriesId={}".format(entry.split("/")[-1]))["entries"]
+        series_search = self._request(f"/mpx/1uC-gC/rte-prd-prd-all-movies-series?byGuid={title}")
+        if not (entries := series_search.get("entries", [])):
+            raise ValueError("No entries for series found")
+            
+        series_id = entries[0]["id"].split("/")[-1]
+        episode_data = self._request(
+            f"/mpx/1uC-gC/rte-prd-prd-all-programs?bySeriesId={series_id}&byProgramType=episode&byGuid={guid}"
+        ).get("entries", [])
 
         return [
             Episode(
                 id_=episode.get("guid"),
                 title=episode.get("plprogram$longTitle"),
-                season=episode.get("plprogram$tvSeasonNumber") or 0,
+                season=self._get_season(episode),
                 number=episode.get("plprogram$tvSeasonEpisodeNumber") or 0,
                 name=episode.get("description"),
-                language=episode["plprogram$languages"][0] if episode.get("plprogram$languages") else "eng",
+                language=(episode.get("plprogram$languages") or ["eng"])[0],
                 service=self.__class__,
+                year=episode.get("plprogram$year"),
                 data=episode,
             )
-            for episode in data
-            if episode["plprogram$programType"] == "episode" and episode.get("guid") == guid
+            for episode in episode_data
         ]
 
     def get_config(self):
