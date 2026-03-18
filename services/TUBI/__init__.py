@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import re
 import sys
 import uuid
@@ -13,12 +12,12 @@ import click
 from langcodes import Language
 from pyplayready.cdm import Cdm as PlayReadyCdm
 from unshackle.core.credential import Credential
-from unshackle.core.downloaders import aria2c, requests
+from unshackle.core.downloaders import requests
 from unshackle.core.manifests import DASH
 from unshackle.core.search_result import SearchResult
 from unshackle.core.service import Service
 from unshackle.core.titles import Episode, Movie, Movies, Series, Title_T, Titles_T
-from unshackle.core.tracks import Audio, Chapter, Chapters, Subtitle, Track, Tracks
+from unshackle.core.tracks import Audio, Chapter, Chapters, Subtitle, Tracks
 
 
 class TUBI(Service):
@@ -26,7 +25,7 @@ class TUBI(Service):
     Service code for TubiTV streaming service (https://tubitv.com/)
 
     \b
-    Version: 1.0.6
+    Version: 1.0.7
     Author: stabbedbybrick
     Authorization: Cookies (Optional)
     Geofence: Locked to whatever region the user is in (API only)
@@ -35,8 +34,6 @@ class TUBI(Service):
             L3: 1080p, AAC2.0
         PlayReady:
             SL2000: 1080p, AAC2.0
-        Clear:
-            1080p, AAC2.0
 
     \b
     Tips:
@@ -44,14 +41,11 @@ class TUBI(Service):
             /series/300001423/gotham
             /tv-shows/200024793/s01-e01-pilot
             /movies/589279/the-outsiders
-        - Use '-v H.265' to request HEVC tracks.
 
     \b
     Notes:
-        - Authentication is currently not required, but cookies are used if provided.
-        - If 1080p exists, it's currently only available as H.265.
-        - Unshackle fails to mux properly when n_m3u8dl_re is used, so aria2c is forced as downloader.
-        - Search is currently disabled.
+        - Authorization is currently only required for search, not for content.
+        - If 1080p exists, it's typically only available as HEVC/H.265.
     """
 
     TITLE_RE = r"^(?:https?://(?:www\.)?tubitv\.com?)?/(?:[a-z]{2}-[a-z]{2}/)?(?P<type>movies|series|tv-shows)/(?P<id>[a-z0-9-]+)"
@@ -64,14 +58,11 @@ class TUBI(Service):
         return TUBI(ctx, **kwargs)
 
     def __init__(self, ctx, title):
-        self.title = title
         super().__init__(ctx)
+        self.title = title
 
         cdm = ctx.obj.cdm
         self.drm_system = "playready" if isinstance(cdm, PlayReadyCdm) else "widevine"
-
-        vcodec = ctx.parent.params.get("vcodec")
-        self.vcodec = "H264" if vcodec is None else "H265"
 
     def authenticate(self, cookies: Optional[MozillaCookieJar] = None, credential: Optional[Credential] = None) -> None:
         super().authenticate(cookies, credential)
@@ -80,40 +71,43 @@ class TUBI(Service):
             self.auth_token = next((cookie.value for cookie in cookies if cookie.name == "at"), None)
             self.session.headers.update({"Authorization": f"Bearer {self.auth_token}"})
 
-    # Disable search for now
-    # def search(self) -> Generator[SearchResult, None, None]:
-    #     params = {
-    #         "search": self.title,
-    #         "include_linear": "true",
-    #         "include_channels": "false",
-    #         "is_kids_mode": "false",
-    #     }
+    def search(self) -> Generator[SearchResult, None, None]:
+        if not self.auth_token:
+            self.log.error(" - Error: Search requires authentication/cookies.")
+            return
+        
+        params = {
+            "search": self.title,
+            "include_linear": "false",
+            "include_channels": "false",
+            "is_kids_mode": "false",
+        }
 
-    #     r = self.session.get(self.config["endpoints"]["search"], params=params)
-    #     r.raise_for_status()
-    #     results = r.json()
-    #     from devine.core.console import console
-    #     console.print(results)
-    #     exit()
+        r = self.session.get(self.config["endpoints"]["search"], params=params)
+        r.raise_for_status()
+        results = r.json()
+        
+        search_results = [x for x in results["contents"].values()]
 
-    #     for result in results:
-    #         label = "series" if result["type"] == "s" else "movies" if result["type"] == "v" else result["type"]
-    #         title = (
-    #             result.get("title", "")
-    #             .lower()
-    #             .replace(" ", "-")
-    #             .replace(":", "")
-    #             .replace("(", "")
-    #             .replace(")", "")
-    #             .replace(".", "")
-    #         )
-    #         yield SearchResult(
-    #             id_=f"https://tubitv.com/{label}/{result.get('id')}/{title}",
-    #             title=result.get("title"),
-    #             description=result.get("description"),
-    #             label=label,
-    #             url=f"https://tubitv.com/{label}/{result.get('id')}/{title}",
-    #         )
+        for result in search_results:
+            label = "series" if result["type"] == "s" else "movies" if result["type"] == "v" else result["type"]
+            title = (
+                result.get("title", "")
+                .lower()
+                .replace(" ", "-")
+                .replace(":", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace(".", "")
+                .replace("'", "-")
+            )
+            yield SearchResult(
+                id_=f"https://tubitv.com/{label}/{result.get('id')}/{title}",
+                title=result.get("title"),
+                description=result.get("description"),
+                label=label,
+                url=f"https://tubitv.com/{label}/{result.get('id')}/{title}",
+            )
 
     def get_titles(self) -> Titles_T:
         try:
@@ -209,41 +203,27 @@ class TUBI(Service):
             self.log.info(f"Title is available in: {title.data.get('country')}")
             sys.exit(1)
 
-        codecs = [x.get("codec") for x in resources]
-        if not any(self.vcodec in x for x in codecs):
-            raise ValueError(f"Could not find a {self.vcodec} video resource for this title")
+        tracks = Tracks()
 
-        resource = next((
-            x for x in resources
-            if self.drm_system in x.get("type", "") and self.vcodec in x.get("codec", "")
-        ), None) or next((
-            x for x in resources
-            if self.drm_system not in x.get("type", "") and
-            "dash" in x.get("type", "") and
-            self.vcodec in x.get("codec", "")
-        ), None)
-        if not resource:
-            raise ValueError("Could not find a video resource for this title")
-
-        manifest = resource.get("manifest", {}).get("url")
-        if not manifest:
-            raise ValueError("Could not find a manifest for this title")
+        for codec in ["h264", "h265"]:
+            resource = next((
+                x for x in resources
+                if self.drm_system in x.get("type", "") and codec in x.get("codec", "").lower()
+            ), None)
+            if not resource:
+                self.log.warning(f" - Could not find a {codec} video resource for this title")
+                continue
         
-        title.data["license_url"] = resource.get("license_server", {}).get("url")
+            manifest = resource.get("manifest", {}).get("url")
+            
+            title.data["license_url"] = resource.get("license_server", {}).get("url")
 
-        tracks = DASH.from_url(url=manifest, session=self.session).to_tracks(language=title.language)
+            tracks.add(DASH.from_url(url=manifest, session=self.session).to_tracks(language=title.language))
+
         for track in tracks:
-            rep_base = track.data["dash"]["representation"].find("BaseURL")
-            if rep_base is not None:
-                base_url = os.path.dirname(track.url)
-                track_base = rep_base.text
-                track.url = f"{base_url}/{track_base}"
-                track.descriptor = Track.Descriptor.URL
-                track.downloader = aria2c
-
             if isinstance(track, Audio):
                 role = track.data["dash"]["adaptation_set"].find("Role")
-                if role is not None and role.get("value") in ["description", "alternative", "alternate"]:
+                if role is not None and role.get("value").lower() in ["description", "alternative", "alternate"]:
                     track.descriptive = True
 
         if title.data.get("subtitles"):
