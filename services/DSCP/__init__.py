@@ -33,7 +33,7 @@ class DSCP(Service):
     Credit to @sp4rk.y for the subtitle fix.
 
     \b
-    Version: 1.0.2
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: Cookies for subscription, none for freely available titles
     Robustness:
@@ -291,26 +291,31 @@ class DSCP(Service):
         return tracks
 
     def get_chapters(self, title: Movie | Episode) -> Chapters:
-        if not title.data.get("chapters"):
+        if not (chapters := title.data.get("chapters")):
             return Chapters()
         
-        chapters = []
-        for chapter in title.data["chapters"]:
-            if "recap" in chapter.get("secondaryType", "").lower():
-                chapters.append(Chapter(name="Recap", timestamp=chapter["start"]))
-                if chapter.get("end"):
-                    chapters.append(Chapter(timestamp=chapter.get("end")))
-            if "intro" in chapter.get("secondaryType", "").lower():
-                chapters.append(Chapter(name="Intro", timestamp=chapter["start"]))
-                if chapter.get("end"):
-                    chapters.append(Chapter(timestamp=chapter.get("end")))
-            elif "credits" in chapter.get("type", "").lower():
-                chapters.append(Chapter(name="Credits", timestamp=chapter["start"]))
-        
-        if not any(c.timestamp == "00:00:00.000" for c in chapters):
-            chapters.append(Chapter(timestamp=0))
+        ch_map = {0: Chapter(timestamp=0)}
 
-        return sorted(chapters, key=lambda x: x.timestamp)
+        for c in chapters:
+            s_type, c_type = c.get("secondaryType", "").lower(), c.get("type", "").lower()
+
+            name = None
+            if "recap" in s_type:
+                name = "Recap"
+            elif "intro" in s_type:
+                name = "Intro"
+            elif "credits" in c_type:
+                name = "Credits"
+
+            if (end := c.get("end")) is not None:
+                ch_map.setdefault(end, Chapter(timestamp=end))
+
+            if (start := c.get("start")) is not None:
+                if start not in ch_map or name:
+                    ch_map[start] = Chapter(name=name, timestamp=start)
+
+        sorted_chapters = sorted(ch_map.values(), key=lambda x: x.timestamp)
+        return Chapters(sorted_chapters)
 
     def get_widevine_service_certificate(self, challenge: bytes, title: Episode | Movie, **_: Any) -> str:
         if not (license_url := title.data.get("license_url")):
