@@ -28,7 +28,7 @@ class ALL4(Service):
     Service code for Channel 4's All4 streaming service (https://channel4.com).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: Credentials
     Robustness:
@@ -177,7 +177,7 @@ class ALL4(Service):
                     title=data["brand"]["title"],
                     season=episode["seriesNumber"],
                     number=episode["episodeNumber"],
-                    name=episode["originalTitle"],
+                    name=self._clean_episode(episode.get("originalTitle", "")),
                     language="en",
                     data=episode["assetInfo"].get("streaming") or episode["assetInfo"].get("download"),
                 )
@@ -194,7 +194,7 @@ class ALL4(Service):
                         title=data["brand"]["title"],
                         season=data["selectedEpisode"]["seriesNumber"] or 0,
                         number=data["selectedEpisode"]["episodeNumber"] or 0,
-                        name=data["selectedEpisode"]["originalTitle"],
+                        name=self._clean_episode(data.get("selectedEpisode", {}).get("originalTitle", "")),
                         language="en",
                         data=data["selectedEpisode"],
                     )
@@ -225,7 +225,7 @@ class ALL4(Service):
                         title=data["brand"]["title"],
                         season=episode["seriesNumber"],
                         number=episode["episodeNumber"],
-                        name=episode["originalTitle"],
+                        name=self._clean_episode(episode.get("originalTitle", "")),
                         language="en",
                         data=episode["assetInfo"].get("streaming") or episode["assetInfo"].get("download"),
                     )
@@ -308,7 +308,7 @@ class ALL4(Service):
 
         return r.json()["license"]
 
-    # Service specific functions
+    # Service-specific functions
 
     def sort_assets(self, title: Union[Movie, Episode], android_assets: tuple, web_assets: tuple) -> tuple:
         android_heights = None
@@ -417,3 +417,7 @@ class ALL4(Service):
         except Exception:
             self.log.error(f"Failed to get episode for {url}")
             sys.exit(1)
+
+    @staticmethod
+    def _clean_episode(text: str) -> str:
+        return re.sub(r"(?i)(?:series|season|episode|ep|s|e)\s*\d+\s*(?:episode|ep|e)?\s*\d*\s*:?\s*", "", text)
