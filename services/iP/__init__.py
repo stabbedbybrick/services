@@ -31,7 +31,7 @@ class iP(Service):
     Service code for the BBC iPlayer streaming service (https://www.bbc.co.uk/iplayer).
 
     \b
-    Version: 1.0.2
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: None
     Security: None
@@ -60,12 +60,12 @@ class iP(Service):
     def __init__(self, ctx: Context, title: str):
         super().__init__(ctx)
         self.title = title
-        self.vcodec = ctx.parent.params.get("vcodec")
-        self.range = ctx.parent.params.get("range_")
+        self.vcodec = next(iter(self.track_request.codecs or []), None)
+        self.range = next(iter(self.track_request.ranges or []), None)
 
         self.session.headers.update({"user-agent": "BBCiPlayer/5.17.2.32046"})
 
-        if self.range and self.range[0].name == "HLG":
+        if self.range and self.range.name == "HLG":
             if not self.config.get("certificate"):
                 raise CertificateMissingError("HLG/H.265 tracks cannot be requested without a TLS certificate.")
 
