@@ -24,7 +24,7 @@ class ITV(Service):
     Service code for ITVx streaming service (https://www.itv.com/).
 
     \b
-    Version: 1.0.2
+    Version: 1.0.3
     Author: stabbedbybrick
     Authorization: Cookies (Optional for free content | Required for premium content)
     Robustness:
@@ -97,7 +97,7 @@ class ITV(Service):
 
             headers = {
                 "Host": "auth.prd.user.itv.com",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
+                "User-Agent": "okhttp/4.9.3",
                 "Accept": "application/vnd.user.auth.v2+json",
                 "Accept-Language": "en-US,en;q=0.8",
                 "Origin": "https://www.itv.com",
