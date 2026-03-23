@@ -25,7 +25,7 @@ class TUBI(Service):
     Service code for TubiTV streaming service (https://tubitv.com/)
 
     \b
-    Version: 1.0.7
+    Version: 1.0.8
     Author: stabbedbybrick
     Authorization: Cookies (Optional)
     Geofence: Locked to whatever region the user is in (API only)
@@ -206,10 +206,12 @@ class TUBI(Service):
         tracks = Tracks()
 
         for codec in ["h264", "h265"]:
-            resource = next((
-                x for x in resources
-                if self.drm_system in x.get("type", "") and codec in x.get("codec", "").lower()
-            ), None)
+            codec_matches = [x for x in resources if codec in x.get("codec", "").lower()]
+
+            resource = next(iter(sorted(codec_matches, key=lambda x: (
+                self.drm_system not in x.get("type", ""),
+                "dash" not in x.get("type", "")
+            ))), None)
             if not resource:
                 self.log.warning(f" - Could not find a {codec} video resource for this title")
                 continue
