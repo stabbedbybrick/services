@@ -11,6 +11,7 @@ from urllib.parse import urljoin
 import click
 from click import Context
 from requests import Request
+from unshackle.core.cdm.detect import is_playready_cdm
 from unshackle.core.constants import AnyTrack
 from unshackle.core.credential import Credential
 from unshackle.core.manifests import DASH, HLS
@@ -26,12 +27,15 @@ class CBC(Service):
     Service code for CBC Gem streaming service (https://gem.cbc.ca/).
 
     \b
-    Version: 1.0.1
+    Version: 1.0.2
     Author: stabbedbybrick
     Authorization: Credentials
     Robustness:
-      AES-128: 1080p, DDP5.1
-      Widevine L3: 720p, DDP5.1
+        AES-128: 1080p
+        Widevine:
+            L3: 1080p
+        PlayReady:
+            SL2000: 1080p
 
     \b
     Tips:
@@ -41,7 +45,6 @@ class CBC(Service):
 
     \b
     Notes:
-        - DRM encrypted titles max out at 720p.
         - CCExtrator v0.94 will likely fail to extract subtitles. It's recommended to downgrade to v0.93.
         - Some audio tracks contain invalid data, causing warning messages from mkvmerge during muxing
           These can be ignored.
@@ -59,10 +62,12 @@ class CBC(Service):
         return CBC(ctx, **kwargs)
 
     def __init__(self, ctx: Context, title: str):
-        self.title: str = title
+        self.title = title
         super().__init__(ctx)
 
-        self.base_url: str = self.config["endpoints"]["base_url"]
+        self.drm_system = "playready" if is_playready_cdm(ctx.obj.cdm) else "widevine"
+
+        self.base_url = self.config["endpoints"]["base_url"]
 
     def search(self) -> Generator[SearchResult, None, None]:
         params = {
@@ -71,9 +76,9 @@ class CBC(Service):
             "pageSize": "20",
             "term": self.title,
         }
-        response: dict = self._request("GET", "/ott/catalog/v1/gem/search", params=params)
+        response = self._request("GET", "/ott/catalog/v2/gem/search", params=params)
 
-        for result in response.get("result", []):
+        for result in response.get("results", []):
             yield SearchResult(
                 id_="https://gem.cbc.ca/{}".format(result.get("url")),
                 title=result.get("title"),
@@ -87,7 +92,7 @@ class CBC(Service):
         if not credential:
             raise EnvironmentError("Service requires Credentials for Authentication.")
 
-        tokens: Optional[Any] = self.cache.get(f"tokens_{credential.sha1}")
+        tokens = self.cache.get(f"tokens_{credential.sha1}")
 
         """
         All grant types for future reference:
@@ -102,7 +107,7 @@ class CBC(Service):
         if tokens and not tokens.expired:
             # cached
             self.log.info(" + Using cached tokens")
-            auth_token: str = tokens.data["access_token"]
+            auth_token = tokens.data["access_token"]
 
         elif tokens and tokens.expired:
             # expired, refresh
@@ -115,11 +120,11 @@ class CBC(Service):
                 "scope": scopes,
             }
 
-            access: dict = self._request("POST", auth_url, params=params)
+            access = self._request("POST", auth_url, params=params)
 
             # Shorten expiration by one hour to account for clock skew
             tokens.set(access, expiration=int(access["expires_in"]) - 3600)
-            auth_token: str = access["access_token"]
+            auth_token = access["access_token"]
 
         else:
             # new
@@ -133,60 +138,75 @@ class CBC(Service):
                 "scope": scopes,
             }
 
-            access: dict = self._request("POST", auth_url, params=params)
+            access = self._request("POST", auth_url, params=params)
 
             # Shorten expiration by one hour to account for clock skew
             tokens.set(access, expiration=int(access["expires_in"]) - 3600)
-            auth_token: str = access["access_token"]
+            auth_token = access["access_token"]
 
-        claims_token: str = self.claims_token(auth_token)
+        claims_token = self.claims_token(auth_token)
         self.session.headers.update({"x-claims-token": claims_token})
 
     def get_titles(self) -> Union[Movies, Series]:
-        title_re: str = r"^(?:https?://(?:www.)?gem.cbc.ca/)?(?P<id>[a-zA-Z0-9_-]+)"
+        title_re= r"^(?:https?://(?:www.)?gem.cbc.ca/)?(?P<id>[a-zA-Z0-9_-]+)"
         try:
-            title_id: str = re.match(title_re, self.title).group("id")
+            title_id = re.match(title_re, self.title).group("id")
         except Exception:
             raise ValueError("- Could not parse ID from title")
 
         params = {"device": "web"}
-        data: dict = self._request("GET", "/ott/catalog/v2/gem/show/{}".format(title_id), params=params)
-        label: str = data.get("contentType", "").lower()
+        data = self._request("GET", "/ott/catalog/v2/gem/show/{}".format(title_id), params=params)
+        label = data.get("contentType", "").lower()
 
         if label in ("film", "movie", "standalone"):
-            movies: list[Movie] = self._movie(data)
+            movies = self._movie(data)
             return Movies(movies)
 
         else:
-            episodes: list[Episode] = self._show(data)
+            episodes = self._show(data)
             return Series(episodes)
 
     def get_tracks(self, title: Union[Movie, Episode]) -> Tracks:
-        index: dict = self._request(
-            "GET", "/media/meta/v1/index.ashx", params={"appCode": "gem", "idMedia": title.id, "output": "jsonObject"}
+        index = self._request(
+            "GET", "/media/meta/v1/index.ashx",
+            params={"appCode": "gem", "idMedia": title.id, "output": "jsonObject"}
         )
 
-        title.data["extra"] = {
+        title.data["extras"] = {
             "chapters": index["Metas"].get("Chapitres"),
             "credits": index["Metas"].get("CreditStartTime"),
         }
 
-        self.drm: bool = index["Metas"].get("isDrmActive") == "true"
-        if self.drm:
-            tech: str = next(tech["name"] for tech in index["availableTechs"] if "widevine" in tech["drm"])
+        is_drm = index["Metas"].get("isDrmActive") == "true"
+        if is_drm:
+            tech = next((t["name"] for t in index["availableTechs"] if self.drm_system in t.get("drm", [])), None)
         else:
-            tech: str = next(tech["name"] for tech in index["availableTechs"] if not tech["drm"])
+            tech = next((t["name"] for t in index["availableTechs"] if not t.get("drm")), None)
 
-        response: dict = self._request(
-            "GET", self.config["endpoints"]["validation"].format("android", title.id, "smart-tv", tech)
-        )
+        if not tech:
+            raise ValueError(f"Could not find a compatible tech for {title}")
 
+        params = {
+            "appCode": "gem",
+            "connectionType": "hd",
+            "deviceType": "android",
+            "idMedia": title.id,
+            "multibitrate": "true",
+            "output": "json",
+            "tech": tech,
+            "manifestVersion": "2",
+            "manifestType": "smart-tv",
+        }
+
+        response = self._request("GET", self.config["endpoints"]["validation"], params=params)
+        
         manifest = response.get("url")
-        self.license = next((x["value"] for x in response["params"] if "widevineLicenseUrl" in x["name"]), None)
-        self.token = next((x["value"] for x in response["params"] if "widevineAuthToken" in x["name"]), None)
 
-        stream_type: Union[HLS, DASH] = HLS if tech == "hls" else DASH
-        tracks: Tracks = stream_type.from_url(manifest, self.session).to_tracks(language=title.language)
+        title.data["is_drm"] = is_drm
+        title.data["license_params"] = response.get("params")
+
+        stream_type = HLS if tech == "hls" else DASH
+        tracks = stream_type.from_url(manifest, self.session).to_tracks(language=title.language)
 
         if stream_type == DASH:
             for track in tracks.audio:
@@ -200,14 +220,15 @@ class CBC(Service):
         return tracks
 
     def get_chapters(self, title: Union[Movie, Episode]) -> Chapters:
-        extra: dict = title.data["extra"]
+        if not (extras := title.data.get("extras")):
+            return Chapters()
 
         chapters = []
-        if extra.get("chapters"):
-            chapters = [Chapter(timestamp=x) for x in set(extra["chapters"].split(","))]
+        if extras.get("chapters"):
+            chapters = [Chapter(timestamp=x) for x in set(extras["chapters"].split(","))]
 
-        if extra.get("credits"):
-            chapters.append(Chapter(name="Credits", timestamp=float(extra["credits"])))
+        if extras.get("credits"):
+            chapters.append(Chapter(name="Credits", timestamp=float(extras["credits"])))
 
         return Chapters(chapters)
 
@@ -217,18 +238,47 @@ class CBC(Service):
     def get_widevine_license(
         self, *, challenge: bytes, title: Union[Movies, Series], track: AnyTrack
     ) -> Optional[Union[bytes, str]]:
-        if not self.license or not self.token:
+        if not title.data.get("is_drm"):
             return None
+        
+        if not (params := title.data.get("license_params")):
+            raise ValueError("Title is DRM protected but no license params found")
+        
+        license_url = next((x["value"] for x in params if "widevineLicenseUrl" in x["name"]), None)
+        token = next((x["value"] for x in params if "widevineAuthToken" in x["name"]), None)
 
-        headers = {"x-dt-auth-token": self.token}
-        r = self.session.post(self.license, headers=headers, data=challenge)
+        if not license_url or not token:
+            raise ValueError("Title is DRM protected but no license url or token found")
+
+        headers = {"x-dt-auth-token": token}
+        r = self.session.post(license_url, headers=headers, data=challenge)
+        r.raise_for_status()
+        return r.content
+    
+    def get_playready_license(
+        self, *, challenge: bytes, title: Union[Movies, Series], track: AnyTrack
+    ) -> Optional[Union[bytes, str]]:
+        if not title.data.get("is_drm"):
+            return None
+        
+        if not (params := title.data.get("license_params")):
+            raise ValueError("Title is DRM protected but no license params found")
+        
+        license_url = next((x["value"] for x in params if "playreadyLicenseUrl" in x["name"]), None)
+        token = next((x["value"] for x in params if "playreadyAuthToken" in x["name"]), None)
+
+        if not license_url or not token:
+            raise ValueError("Title is DRM protected but no license url or token found")
+
+        headers = {"x-dt-auth-token": token}
+        r = self.session.post(license_url, headers=headers, data=challenge)
         r.raise_for_status()
         return r.content
 
-    # Service specific
+    # Service-specific methods
 
     def _show(self, data: dict) -> list[Episode]:
-        lineups: list = next((x["lineups"] for x in data["content"] if x.get("title", "").lower() == "episodes"), None)
+        lineups = next((x["lineups"] for x in data["content"] if x.get("title", "").lower() in ("episodes", "parts")), None)
         if not lineups:
             self.log.warning("No episodes found for: {}".format(data.get("title")))
             return
@@ -256,8 +306,8 @@ class CBC(Service):
         return titles
 
     def _movie(self, data: dict) -> list[Movie]:
-        unwanted: tuple = ("episodes", "trailers", "extras")
-        lineups: list = next((x["lineups"] for x in data["content"] if x.get("title", "").lower() not in unwanted), None)
+        unwanted = ("episodes", "trailers", "extras")
+        lineups = next((x["lineups"] for x in data["content"] if x.get("title", "").lower() not in unwanted), None)
         if not lineups:
             self.log.warning("No movies found for: {}".format(data.get("title")))
             return
@@ -283,8 +333,8 @@ class CBC(Service):
     
     def settings(self) -> tuple:
         settings = self._request("GET", "/ott/catalog/v1/gem/settings", params={"device": "web"})
-        auth_url: str = settings["identityManagement"]["ropc"]["url"]
-        scopes: str = settings["identityManagement"]["ropc"]["scopes"]
+        auth_url = settings["identityManagement"]["ropc"]["url"]
+        scopes = settings["identityManagement"]["ropc"]["scopes"]
         return auth_url, scopes
 
     def claims_token(self, token: str) -> str:
@@ -292,13 +342,13 @@ class CBC(Service):
             "Authorization": "Bearer " + token,
         }
         params = {"device": "web"}
-        response: dict = self._request(
+        response = self._request(
             "GET", "/ott/subscription/v2/gem/Subscriber/profile", headers=headers, params=params
         )
         return response["claimsToken"]
 
     def _request(self, method: str, api: str, **kwargs: Any) -> Any[dict | str]:
-        url: str = urljoin(self.base_url, api)
+        url = urljoin(self.base_url, api)
 
         prep: Request = self.session.prepare_request(Request(method, url, **kwargs))
         response = self.session.send(prep)
@@ -308,9 +358,9 @@ class CBC(Service):
         try:
             data = json.loads(response.content)
             error_keys = ["errorMessage", "ErrorMessage", "ErrorCode", "errorCode", "error"]
-            error_message = next((data.get(key) for key in error_keys if key in data), None)
-            if error_message:
-                self.log.error(f"\n - Error: {error_message}\n")
+            error_code = next((data.get(key) for key in error_keys if key in data), None)
+            if error_code:
+                self.log.error(f"\n ErrorCode: {error_code} - {data.get('message')} \n")
                 sys.exit(1)
 
             return data
